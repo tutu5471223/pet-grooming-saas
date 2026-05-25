@@ -1,0 +1,140 @@
+import { auth } from "@/auth"
+import { Lock } from "lucide-react"
+import { prisma } from "@/lib/prisma"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Scissors, Home, Star, FileText, Users, CreditCard, Link2, Bell, Zap } from "lucide-react"
+import { ServiceManager } from "@/components/settings/service-manager"
+import { RoomManager } from "@/components/settings/room-manager"
+import { ContractTemplateEditor } from "@/components/settings/contract-template-editor"
+import { MemberLevelManager } from "@/components/settings/member-level-manager"
+import { StaffManager } from "@/components/settings/staff-manager"
+import { MonthlyPlanManager } from "@/components/settings/monthly-plan-manager"
+import { BookingLink } from "@/components/settings/booking-link"
+import { ReminderSettings } from "@/components/settings/reminder-settings"
+import { SubscriptionInfo } from "@/components/settings/subscription-info"
+
+function AccessDeniedTab() {
+  return (
+    <div className="flex items-center gap-2 py-10 justify-center text-gray-400 text-sm">
+      <Lock className="h-4 w-4" />
+      僅店主可存取此設定
+    </div>
+  )
+}
+
+async function getSettingsData(shopId: string) {
+  const [shop, services, rooms, memberLevels, monthlyPlans, staff] = await Promise.all([
+    prisma.shop.findUnique({ where: { id: shopId } }),
+    prisma.service.findMany({ where: { shopId }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
+    prisma.boardingRoom.findMany({ where: { shopId }, orderBy: { name: "asc" } }),
+    prisma.memberLevel.findMany({ where: { shopId }, orderBy: { minPoints: "asc" } }),
+    prisma.monthlyPlan.findMany({ where: { shopId, isActive: true } }),
+    prisma.user.findMany({
+      where: { shopId },
+      select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    }),
+  ])
+  return { shop, services, rooms, memberLevels, monthlyPlans, staff }
+}
+
+export default async function SettingsPage() {
+  const session = await auth()
+  const shopId = session!.user.shopId
+  const currentUserId = session!.user.id
+  const isAdmin = session!.user.role === "OWNER"
+  const { shop, services, rooms, memberLevels, monthlyPlans, staff } = await getSettingsData(shopId)
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"
+
+  const staffForClient = staff.map((s) => ({
+    ...s,
+    createdAt: s.createdAt.toISOString(),
+  }))
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">系統設定</h1>
+        <p className="text-sm text-gray-500 mt-1">{shop?.name} 的店家設定</p>
+      </div>
+
+      <Tabs defaultValue="services">
+        <TabsList className="flex-wrap h-auto gap-1">
+          <TabsTrigger value="services" className="gap-1.5">
+            <Scissors className="h-4 w-4" /> 服務項目
+          </TabsTrigger>
+          <TabsTrigger value="rooms" className="gap-1.5">
+            <Home className="h-4 w-4" /> 住宿房間
+          </TabsTrigger>
+          <TabsTrigger value="members" className="gap-1.5">
+            <Star className="h-4 w-4" /> 會員等級
+          </TabsTrigger>
+          <TabsTrigger value="contract" className="gap-1.5">
+            <FileText className="h-4 w-4" /> 合約範本
+          </TabsTrigger>
+          <TabsTrigger value="staff" className="gap-1.5">
+            <Users className="h-4 w-4" /> 員工管理
+          </TabsTrigger>
+          <TabsTrigger value="monthly" className="gap-1.5">
+            <CreditCard className="h-4 w-4" /> 月租方案
+          </TabsTrigger>
+          <TabsTrigger value="booking" className="gap-1.5">
+            <Link2 className="h-4 w-4" /> 預約連結
+          </TabsTrigger>
+          <TabsTrigger value="reminder" className="gap-1.5">
+            <Bell className="h-4 w-4" /> 提醒設定
+          </TabsTrigger>
+          <TabsTrigger value="subscription" className="gap-1.5">
+            <Zap className="h-4 w-4" /> 訂閱方案
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="services" className="mt-4">
+          <ServiceManager initialServices={services} />
+        </TabsContent>
+
+        <TabsContent value="rooms" className="mt-4">
+          <RoomManager initialRooms={rooms} />
+        </TabsContent>
+
+        <TabsContent value="members" className="mt-4">
+          {isAdmin ? <MemberLevelManager initialLevels={memberLevels} /> : <AccessDeniedTab />}
+        </TabsContent>
+
+        <TabsContent value="contract" className="mt-4">
+          <ContractTemplateEditor
+            shopId={shopId}
+            initialContent={shop?.contractTemplate ?? ""}
+          />
+        </TabsContent>
+
+        <TabsContent value="staff" className="mt-4">
+          <StaffManager
+            initialStaff={staffForClient}
+            currentUserId={currentUserId}
+            isAdmin={isAdmin}
+          />
+        </TabsContent>
+
+        <TabsContent value="monthly" className="mt-4">
+          {isAdmin ? <MonthlyPlanManager initialPlans={monthlyPlans} /> : <AccessDeniedTab />}
+        </TabsContent>
+
+        <TabsContent value="booking" className="mt-4">
+          <BookingLink shopId={shopId} baseUrl={baseUrl} />
+        </TabsContent>
+
+        <TabsContent value="reminder" className="mt-4">
+          <ReminderSettings
+            shopId={shopId}
+            initialTemplate={shop?.reminderTemplate ?? null}
+          />
+        </TabsContent>
+
+        <TabsContent value="subscription" className="mt-4">
+          {isAdmin ? <SubscriptionInfo /> : <AccessDeniedTab />}
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}

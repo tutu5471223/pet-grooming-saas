@@ -1,0 +1,77 @@
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ shopId: string }> }
+) {
+  const { shopId } = await params
+  const body = await req.json()
+
+  const { name, phone, petName, petSpecies, preferredDate, preferredTime, notes, services } = body
+
+  if (!name?.trim() || !phone?.trim() || !petName?.trim()) {
+    return NextResponse.json({ error: "請填寫必填欄位" }, { status: 400 })
+  }
+  if (!/^09\d{8}$/.test(phone)) {
+    return NextResponse.json({ error: "請輸入正確的手機號碼（格式：09xxxxxxxx）" }, { status: 400 })
+  }
+
+  try {
+    const shop = await prisma.shop.findUnique({ where: { id: shopId } })
+    if (!shop) return NextResponse.json({ error: "找不到店家" }, { status: 404 })
+
+    let customer = await prisma.customer.findFirst({ where: { phone, shopId } })
+    if (!customer) {
+      customer = await prisma.customer.create({
+        data: { name: name.trim(), phone, shopId },
+      })
+    }
+
+    let pet = await prisma.pet.findFirst({
+      where: { name: petName.trim(), customerId: customer.id, isActive: true },
+    })
+    if (!pet) {
+      pet = await prisma.pet.create({
+        data: { name: petName.trim(), species: petSpecies || "犬", customerId: customer.id, shopId },
+      })
+    }
+
+    let scheduledAt: Date
+    if (preferredDate) {
+      scheduledAt = new Date(preferredDate)
+    } else {
+      scheduledAt = new Date()
+      scheduledAt.setDate(scheduledAt.getDate() + 1)
+    }
+    scheduledAt.setHours(preferredTime === "下午" ? 14 : 9, 0, 0, 0)
+
+    const estimatedCost =
+      Array.isArray(services) && services.length > 0
+        ? services.reduce((sum: number, s: { price: number }) => sum + (s.price || 0), 0)
+        : null
+
+    const noteParts: string[] = []
+    if (preferredTime && preferredTime !== "不限") noteParts.push(`偏好時段：${preferredTime}`)
+    if (notes?.trim()) noteParts.push(notes.trim())
+
+    const appointment = await prisma.appointment.create({
+      data: {
+        petId: pet.id,
+        shopId,
+        type: "GROOMING",
+        scheduledAt,
+        status: "PENDING",
+        services: Array.isArray(services) && services.length > 0 ? JSON.stringify(services) : null,
+        estimatedCost,
+        notes: noteParts.length > 0 ? noteParts.join("。") : null,
+        source: "LINE",
+      },
+    })
+
+    return NextResponse.json({ appointmentId: appointment.id }, { status: 201 })
+  } catch (error) {
+    console.error("POST /api/booking/[shopId]/request", error)
+    return NextResponse.json({ error: "操作失敗，請稍後再試" }, { status: 500 })
+  }
+}

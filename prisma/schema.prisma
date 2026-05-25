@@ -1,0 +1,514 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Shop {
+  id                 String   @id @default(cuid())
+  name               String
+  phone              String?
+  address            String?
+  city               String?
+  lineId             String?
+  email              String?
+  contractTemplate   String?
+  logoUrl            String?
+  businessHoursStart String?
+  businessHoursEnd   String?
+  restDays           String?
+  reminderTemplate   String?
+  status             String   @default("ACTIVE")
+  registeredAt       DateTime @default(now())
+  onboardingDone     Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  users         User[]
+  customers     Customer[]
+  services      Service[]
+  boardingRooms BoardingRoom[]
+  memberLevels  MemberLevel[]
+  monthlyPlans  MonthlyPlan[]
+  appointments  Appointment[]
+  payments      Payment[]
+  auditLogs     AuditLog[]
+  subscriptions Subscription[]
+  expenses      Expense[]
+  products      Product[]
+  sales         Sale[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String?
+  password     String?
+  role         String   @default("STAFF")
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id])
+  isActive     Boolean  @default(true)
+  isSuperAdmin Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  groomingRecords   GroomingRecord[]
+  appointments      Appointment[]
+  boardingDailyLogs BoardingDailyLog[]
+  auditLogs         AuditLog[]
+  expenses          Expense[]         @relation("ExpenseCreator")
+
+  @@unique([email, shopId])
+}
+
+model Customer {
+  id                   String       @id @default(cuid())
+  name                 String
+  phone                String
+  lineId               String?
+  address              String?
+  shopId               String
+  shop                 Shop         @relation(fields: [shopId], references: [id])
+  memberLevelId        String?
+  memberLevel          MemberLevel? @relation(fields: [memberLevelId], references: [id])
+  storedValue          Float        @default(0)
+  points               Int          @default(0)
+  monthlyPlanId        String?
+  monthlyPlan          MonthlyPlan? @relation(fields: [monthlyPlanId], references: [id])
+  monthlyPlanStartDate DateTime?
+  notes                String?
+  flagType             String?
+  flagNote             String?
+  status               String       @default("ACTIVE")
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  pets                 Pet[]
+  payments             Payment[]
+  pointsHistories      PointsHistory[]
+  storedValueHistories StoredValueHistory[]
+  sales                Sale[]
+
+  @@index([shopId])
+  @@index([phone])
+}
+
+model Pet {
+  id             String    @id @default(cuid())
+  name           String
+  species        String    @default("犬")
+  breed          String?
+  gender         String    @default("UNKNOWN")
+  birthday       DateTime?
+  chipNumber     String?
+  vaccineRecords String?
+  diseases       String?
+  allergies      String?
+  photoUrl       String?
+  customerId     String
+  customer       Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  shopId         String
+  notes          String?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  contract          Contract?
+  groomingRecords   GroomingRecord[]
+  boardingRecords   BoardingRecord[]
+  appointments      Appointment[]
+  servicePrices     PetServicePrice[]
+  petMonthlyPlans   PetMonthlyPlan[]
+  payments          Payment[]
+
+  @@index([shopId])
+  @@index([customerId])
+}
+
+model Contract {
+  id           String    @id @default(cuid())
+  petId        String    @unique
+  pet          Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  shopId       String
+  content      String
+  signedAt     DateTime?
+  signerName   String?
+  signatureUrl String?
+  pdfUrl       String?
+  status       String    @default("PENDING")
+  token        String    @unique @default(cuid())
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model GroomingRecord {
+  id             String   @id @default(cuid())
+  petId          String
+  pet            Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  shopId         String
+  groomerId      String?
+  groomer        User?    @relation(fields: [groomerId], references: [id])
+  services       String   @default("[]")
+  products       String?
+  totalCost      Float    @default(0)
+  beforePhotoUrl       String?
+  afterPhotoUrl        String?
+  skinCondition        String?
+  furCondition         String?
+  notes                String?
+  viewToken            String   @unique @default(cuid())
+  date                 DateTime @default(now())
+  customerSignature    String?
+  customerConfirmedAt  DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  payment Payment?
+
+  @@index([shopId, date])
+  @@index([petId])
+}
+
+model BoardingRoom {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id])
+  name      String
+  type      String?
+  dailyRate Float    @default(0)
+  status    String   @default("AVAILABLE")
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  boardingRecords BoardingRecord[]
+  appointments    Appointment[]
+}
+
+model BoardingRecord {
+  id                  String        @id @default(cuid())
+  petId               String
+  pet                 Pet           @relation(fields: [petId], references: [id], onDelete: Cascade)
+  shopId              String
+  roomId              String?
+  room                BoardingRoom? @relation(fields: [roomId], references: [id])
+  checkIn             DateTime
+  checkOut            DateTime?
+  dailyRate           Float
+  totalCost           Float?
+  notes               String?
+  status              String        @default("STAYING")
+  priceAdjustment     Float?
+  priceAdjustmentNote String?
+  addOnServices       String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  payment           Payment?
+  boardingDailyLogs BoardingDailyLog[]
+
+  @@index([shopId])
+  @@index([petId])
+}
+
+model BoardingDailyLog {
+  id               String         @id @default(cuid())
+  boardingRecordId String
+  boardingRecord   BoardingRecord @relation(fields: [boardingRecordId], references: [id], onDelete: Cascade)
+  shopId           String
+  date             DateTime       @default(now())
+  note             String?
+  condition        String         @default("良好")
+  createdBy        String?
+  staff            User?          @relation(fields: [createdBy], references: [id])
+  createdAt        DateTime       @default(now())
+}
+
+model Appointment {
+  id               String        @id @default(cuid())
+  petId            String
+  pet              Pet           @relation(fields: [petId], references: [id], onDelete: Cascade)
+  shopId           String
+  shop             Shop          @relation(fields: [shopId], references: [id])
+  staffId          String?
+  staff            User?         @relation(fields: [staffId], references: [id])
+  type             String        @default("GROOMING")
+  scheduledAt      DateTime
+  duration         Int?
+  status           String        @default("PENDING")
+  services         String?
+  estimatedCost    Float?
+  notes            String?
+  source           String?
+  boardingCheckOut  DateTime?
+  boardingRoomId    String?
+  boardingRoom      BoardingRoom?    @relation(fields: [boardingRoomId], references: [id])
+  petMonthlyPlanId  String?
+  petMonthlyPlan    PetMonthlyPlan?  @relation(fields: [petMonthlyPlanId], references: [id])
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([shopId])
+  @@index([scheduledAt])
+  @@index([petId])
+}
+
+model Payment {
+  id               String          @id @default(cuid())
+  shopId           String
+  shop             Shop            @relation(fields: [shopId], references: [id])
+  customerId       String
+  customer         Customer        @relation(fields: [customerId], references: [id])
+  petId            String?
+  pet              Pet?            @relation(fields: [petId], references: [id])
+  groomingRecordId String?         @unique
+  groomingRecord   GroomingRecord? @relation(fields: [groomingRecordId], references: [id])
+  boardingRecordId String?         @unique
+  boardingRecord   BoardingRecord? @relation(fields: [boardingRecordId], references: [id])
+  monthlyPlanId    String?
+  monthlyPlan      PetMonthlyPlan? @relation(fields: [monthlyPlanId], references: [id])
+  amount           Float
+  billingType      String          @default("SINGLE")
+  paymentMethod    String?
+  status           String          @default("PENDING")
+  notes            String?
+  paidAt           DateTime?
+  createdAt        DateTime        @default(now())
+
+  @@index([shopId, paidAt])
+  @@index([customerId])
+  @@index([petId])
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id])
+  name        String
+  category    String?
+  price       Float    @default(0)
+  duration    Int?
+  description String?
+  isActive    Boolean  @default(true)
+  isPublic    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  petPrices   PetServicePrice[]
+}
+
+model PetServicePrice {
+  id        String   @id @default(cuid())
+  shopId    String
+  petId     String
+  pet       Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  serviceId String
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  price     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([petId, serviceId])
+  @@index([shopId])
+  @@index([petId])
+}
+
+model MemberLevel {
+  id           String   @id @default(cuid())
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id])
+  name         String
+  minPoints    Int      @default(0)
+  discountRate Float    @default(0)
+  benefits     String?
+  color        String   @default("#6366f1")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customers Customer[]
+}
+
+model MonthlyPlan {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id])
+  name        String
+  price       Float
+  sessions    Int      @default(0)
+  services    String?
+  description String?
+  isActive    Boolean  @default(true)
+  validDays   Int      @default(30)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  customers Customer[]
+}
+
+model PointsHistory {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  shopId     String
+  points     Int
+  reason     String
+  createdAt  DateTime @default(now())
+
+  @@index([shopId, customerId])
+}
+
+model StoredValueHistory {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  shopId     String
+  amount     Float
+  reason     String
+  createdAt  DateTime @default(now())
+
+  @@index([shopId, customerId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id])
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  resource   String
+  resourceId String?
+  detail     String?
+  createdAt  DateTime @default(now())
+}
+
+model Plan {
+  id           String   @id @default(cuid())
+  name         String
+  price        Float    @default(0)
+  interval     String   @default("MONTHLY")
+  maxCustomers Int      @default(50)
+  maxPets      Int      @default(100)
+  maxStaff     Int      @default(2)
+  features     String   @default("[]")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                 String   @id @default(cuid())
+  shopId             String
+  shop               Shop     @relation(fields: [shopId], references: [id])
+  planId             String
+  plan               Plan     @relation(fields: [planId], references: [id])
+  status             String   @default("TRIAL")
+  currentPeriodStart DateTime @default(now())
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id])
+  date        DateTime
+  category    String
+  description String
+  amount      Float
+  createdBy   String?
+  creator     User?    @relation("ExpenseCreator", fields: [createdBy], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shopId, date])
+}
+
+// ── 商品銷售模組 ──────────────────────────────────────────────────────────────
+// category 可選值: FOOD（食品）/ GROOMING（美容用品）/ ACCESSORY（配件）/ HEALTH（保健）
+
+model Product {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id])
+  name        String
+  category    String   @default("GROOMING")
+  price       Float    @default(0)
+  stock       Int      @default(0)
+  unit        String   @default("個")
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  saleItems   SaleItem[]
+
+  @@index([shopId])
+}
+
+model Sale {
+  id         String    @id @default(cuid())
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id])
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  total      Float
+  note       String?
+  createdAt  DateTime  @default(now())
+
+  items      SaleItem[]
+
+  @@index([shopId])
+  @@index([customerId])
+}
+
+model SaleItem {
+  id        String   @id @default(cuid())
+  saleId    String
+  sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  qty       Int
+  price     Float
+  createdAt DateTime @default(now())
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+// ── 寵物包月美容方案 ──────────────────────────────────────────────────────────────
+model PetMonthlyPlan {
+  id              String   @id @default(cuid())
+  shopId          String
+  petId           String
+  pet             Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  name            String
+  maxSessions     Int      @default(1)
+  pricePerSession Float    @default(0)
+  startDate       DateTime
+  endDate         DateTime
+  notes           String?
+  usedSessions    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  payments        Payment[]
+  appointments    Appointment[]
+
+  @@index([shopId])
+  @@index([petId])
+}
