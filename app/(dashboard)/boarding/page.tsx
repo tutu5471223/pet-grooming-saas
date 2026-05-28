@@ -13,6 +13,7 @@ import { BoardingApptCheckin } from "@/components/boarding/boarding-appt-checkin
 import { BoardingFilter } from "@/components/boarding/boarding-filter"
 import { BoardingWeekView, type WeekRecord } from "@/components/boarding/boarding-week-view"
 import { DeleteRoomButton } from "@/components/boarding/delete-room-button"
+import { BoardingLogsButton } from "@/components/boarding/boarding-logs-button"
 import Link from "next/link"
 
 async function getBoardingData(shopId: string) {
@@ -231,6 +232,7 @@ export default async function BoardingPage({
                           <th className="pb-2 text-left font-medium text-gray-500 whitespace-nowrap">入住</th>
                           <th className="pb-2 text-left font-medium text-gray-500 whitespace-nowrap">退房</th>
                           <th className="pb-2 text-left font-medium text-gray-500">狀態</th>
+                          <th className="pb-2 text-left font-medium text-gray-500">護理記錄</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
@@ -251,6 +253,15 @@ export default async function BoardingPage({
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>
                                   {label}
                                 </span>
+                              </td>
+                              <td className="py-2.5">
+                                <BoardingLogsButton
+                                  boardingRecordId={r.id}
+                                  petName={r.pet.name}
+                                  customerName={r.pet.customer.name}
+                                  checkIn={r.checkIn.toISOString()}
+                                  checkOut={r.checkOut?.toISOString() ?? null}
+                                />
                               </td>
                             </tr>
                           )

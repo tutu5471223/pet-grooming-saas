@@ -39,7 +39,6 @@ async function getCustomer(id: string, shopId: string) {
           contract: true,
           groomingRecords: { orderBy: { date: "desc" }, take: 1 },
           _count: { select: { groomingRecords: true } },
-          petMonthlyPlans: { orderBy: { startDate: "desc" } },
         },
         orderBy: { createdAt: "asc" },
       },
@@ -48,6 +47,19 @@ async function getCustomer(id: string, shopId: string) {
       storedValueHistories: { orderBy: { createdAt: "desc" }, take: 10 },
     },
   })
+}
+
+// Separate query so a missing PetMonthlyPlan table doesn't crash the whole page
+async function getPetMonthlyPlans(shopId: string, petIds: string[]) {
+  if (petIds.length === 0) return []
+  try {
+    return await prisma.petMonthlyPlan.findMany({
+      where: { shopId, petId: { in: petIds } },
+      orderBy: { startDate: "desc" },
+    })
+  } catch {
+    return []
+  }
 }
 
 export default async function CustomerDetailPage({
@@ -64,6 +76,8 @@ export default async function CustomerDetailPage({
   ])
 
   if (!customer) notFound()
+
+  const petMonthlyPlans = await getPetMonthlyPlans(shopId, customer.pets.map((p) => p.id))
 
   return (
     <div className="p-6 space-y-6">
@@ -186,9 +200,10 @@ export default async function CustomerDetailPage({
 
       {/* Pet Monthly Plans — 唯讀顯示 */}
       {(() => {
-        const allPetPlans = customer.pets.flatMap((pet) =>
-          pet.petMonthlyPlans.map((plan) => ({ ...plan, petName: pet.name, petId: pet.id }))
-        )
+        const allPetPlans = petMonthlyPlans.map((plan) => ({
+          ...plan,
+          petName: customer.pets.find((p) => p.id === plan.petId)?.name ?? "",
+        }))
         if (allPetPlans.length === 0) {
           return (
             <div className="flex items-center gap-3 rounded-xl border border-dashed border-gray-300 px-4 py-3">
@@ -280,7 +295,6 @@ export default async function CustomerDetailPage({
                             </Link>
                             <Link
                               href={`/appointments/new?petId=${pet.id}`}
-                              onClick={(e) => e.stopPropagation()}
                             >
                               <Button size="sm" variant="outline" className="h-7 px-2 text-xs shrink-0 ml-2">
                                 <Calendar className="h-3 w-3 mr-1" />
