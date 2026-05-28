@@ -57,6 +57,7 @@ async function getDashboardData(shopId: string) {
             })
             .then((r) => ({
               month: format(d, "M月"),
+              yearMonth: format(d, "yyyy-MM"),
               revenue: r._sum.amount ?? 0,
             }))
         })

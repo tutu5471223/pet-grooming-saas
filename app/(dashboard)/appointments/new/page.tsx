@@ -62,6 +62,15 @@ interface ActivePlan {
   endDate: string
 }
 
+interface PlanTemplate {
+  id: string
+  name: string
+  price: number
+  sessions: number
+  validDays: number
+  description: string | null
+}
+
 const APPOINTMENT_TYPES = [
   { value: "GROOMING", label: "美容" },
   { value: "BOARDING", label: "住宿" },
@@ -83,10 +92,12 @@ export default function NewAppointmentPage() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [petPriceMap, setPetPriceMap] = useState<Record<string, number>>({})
 
-  // Monthly plan state (Task 5)
+  // Monthly plan state
   const [activePlans, setActivePlans] = useState<ActivePlan[]>([])
-  const [paymentMethod, setPaymentMethod] = useState<"SINGLE" | "MONTHLY_PLAN">("SINGLE")
+  const [planTemplates, setPlanTemplates] = useState<PlanTemplate[]>([])
+  const [paymentMethod, setPaymentMethod] = useState<"SINGLE" | "MONTHLY_PLAN" | "BUY_AND_USE">("SINGLE")
   const [selectedPlanId, setSelectedPlanId] = useState("")
+  const [selectedTemplateId, setSelectedTemplateId] = useState("")
 
   // Pet search
   const [petSearch, setPetSearch] = useState("")
@@ -123,6 +134,10 @@ export default function NewAppointmentPage() {
 
   // Load base data
   useEffect(() => {
+    fetch("/api/monthly-plans").then(r => r.json()).then((data: PlanTemplate[]) => {
+      setPlanTemplates(Array.isArray(data) ? data.filter(p => (p as { isActive?: boolean }).isActive !== false) : [])
+    }).catch(() => {})
+
     Promise.all([
       fetch("/api/services", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/staff", { cache: "no-store" }).then((r) => r.json()),
@@ -130,22 +145,26 @@ export default function NewAppointmentPage() {
       setServices(s)
       setStaffList(st)
 
-      // Restore from localStorage
-      try {
-        const saved = localStorage.getItem("lastAppointmentSelection")
-        if (saved) {
-          const { petId } = JSON.parse(saved) as { petId: string }
-          if (petId) {
-            fetch(`/api/pets/all?search=`)
-              .then((r) => r.json())
-              .then((pets: PetResult[]) => {
-                const pet = pets.find((p) => p.id === petId)
-                if (pet) restorePet(pet)
-              })
-              .catch(() => {})
-          }
-        }
-      } catch { /* ignore */ }
+      // Check URL param first (from pet book button), then localStorage
+      const urlPetId = typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("petId")
+        : null
+      const lsPetId = (() => {
+        try {
+          const saved = localStorage.getItem("lastAppointmentSelection")
+          return saved ? (JSON.parse(saved) as { petId: string }).petId : null
+        } catch { return null }
+      })()
+      const targetPetId = urlPetId || lsPetId
+      if (targetPetId) {
+        fetch(`/api/pets/all?search=`)
+          .then((r) => r.json())
+          .then((pets: PetResult[]) => {
+            const pet = pets.find((p) => p.id === targetPetId)
+            if (pet) restorePet(pet)
+          })
+          .catch(() => {})
+      }
     })
 
     // Re-fetch staff when window gains focus (user added staff in another tab)
@@ -296,6 +315,34 @@ export default function NewAppointmentPage() {
     setConflict(null)
     setSubmitting(true)
     try {
+      let usePlanId: string | null = null
+
+      if (paymentMethod === "MONTHLY_PLAN") {
+        usePlanId = selectedPlanId || null
+      } else if (paymentMethod === "BUY_AND_USE" && selectedTemplateId) {
+        // First create the monthly plan, then use it
+        const template = planTemplates.find(t => t.id === selectedTemplateId)
+        if (!template) throw new Error("請選擇包月方案")
+        const today = new Date()
+        const endDate = new Date(today)
+        endDate.setDate(endDate.getDate() + (template.validDays || 30))
+        const pricePerSession = template.sessions > 0 ? template.price / template.sessions : 0
+        const planRes = await fetch(`/api/pets/${selectedPetId}/monthly-plans`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: template.name,
+            maxSessions: template.sessions,
+            pricePerSession,
+            startDate: today.toISOString(),
+            endDate: endDate.toISOString(),
+          }),
+        })
+        if (!planRes.ok) throw new Error("購買包月失敗")
+        const newPlan = await planRes.json()
+        usePlanId = newPlan.id
+      }
+
       const res = await fetch("/api/appointments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -317,7 +364,7 @@ export default function NewAppointmentPage() {
             ? new Date(form.boardingCheckOut).toISOString()
             : null,
           boardingRoomId: form.boardingRoomId || null,
-          petMonthlyPlanId: paymentMethod === "MONTHLY_PLAN" ? selectedPlanId || null : null,
+          petMonthlyPlanId: usePlanId,
         }),
       })
       if (res.status === 409) {
@@ -328,9 +375,8 @@ export default function NewAppointmentPage() {
       }
       if (!res.ok) throw new Error("建立失敗")
       router.push("/appointments")
-      router.refresh()
-    } catch {
-      setError("建立預約失敗，請再試一次")
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "建立預約失敗，請再試一次")
     } finally {
       setSubmitting(false)
     }
@@ -689,14 +735,14 @@ export default function NewAppointmentPage() {
           </Card>
         )}
 
-        {/* Monthly Plan Payment (Task 5) */}
-        {!isBoarding && activePlans.length > 0 && (
+        {/* Monthly Plan Payment */}
+        {!isBoarding && (activePlans.length > 0 || planTemplates.length > 0) && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">付款方式</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("SINGLE")}
@@ -709,21 +755,40 @@ export default function NewAppointmentPage() {
                   <p className="font-medium text-gray-900">單次付款</p>
                   <p className="text-xs text-gray-500 mt-0.5">按預估費用結帳</p>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPaymentMethod("MONTHLY_PLAN")
-                    if (activePlans.length === 1) setSelectedPlanId(activePlans[0].id)
-                  }}
-                  className={`rounded-xl border p-3 text-sm text-left transition-colors ${
-                    paymentMethod === "MONTHLY_PLAN"
-                      ? "border-indigo-500 bg-indigo-50"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <p className="font-medium text-gray-900">使用包月</p>
-                  <p className="text-xs text-gray-500 mt-0.5">扣除包月次數</p>
-                </button>
+                {activePlans.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod("MONTHLY_PLAN")
+                      if (activePlans.length === 1) setSelectedPlanId(activePlans[0].id)
+                    }}
+                    className={`rounded-xl border p-3 text-sm text-left transition-colors ${
+                      paymentMethod === "MONTHLY_PLAN"
+                        ? "border-indigo-500 bg-indigo-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <p className="font-medium text-gray-900">使用現有包月</p>
+                    <p className="text-xs text-gray-500 mt-0.5">扣除已有包月次數</p>
+                  </button>
+                )}
+                {planTemplates.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod("BUY_AND_USE")
+                      if (planTemplates.length === 1) setSelectedTemplateId(planTemplates[0].id)
+                    }}
+                    className={`rounded-xl border p-3 text-sm text-left transition-colors ${
+                      paymentMethod === "BUY_AND_USE"
+                        ? "border-green-500 bg-green-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <p className="font-medium text-gray-900">購買並使用包月</p>
+                    <p className="text-xs text-gray-500 mt-0.5">今日購買同時使用一次</p>
+                  </button>
+                )}
               </div>
 
               {paymentMethod === "MONTHLY_PLAN" && activePlans.length > 1 && (
@@ -748,11 +813,48 @@ export default function NewAppointmentPage() {
                 <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 text-sm">
                   <p className="font-medium text-gray-900">{activePlans[0].name}</p>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    已使用 {activePlans[0].usedSessions}/{activePlans[0].maxSessions} 次・
-                    完成後自動扣次
+                    已使用 {activePlans[0].usedSessions}/{activePlans[0].maxSessions} 次・完成後自動扣次
                   </p>
                 </div>
               )}
+
+              {paymentMethod === "BUY_AND_USE" && planTemplates.length > 1 && (
+                <div>
+                  <Label>選擇要購買的方案</Label>
+                  <select
+                    value={selectedTemplateId}
+                    onChange={e => setSelectedTemplateId(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="">請選擇方案</option>
+                    {planTemplates.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}（{t.sessions}次 / NT${t.price}）
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {paymentMethod === "BUY_AND_USE" && planTemplates.length === 1 && (
+                <div className="rounded-lg bg-green-50 border border-green-100 px-3 py-2 text-sm">
+                  <p className="font-medium text-gray-900">{planTemplates[0].name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {planTemplates[0].sessions} 次 / NT${planTemplates[0].price}・今日購買並使用第 1 次
+                  </p>
+                </div>
+              )}
+
+              {paymentMethod === "BUY_AND_USE" && selectedTemplateId && planTemplates.length > 1 && (() => {
+                const t = planTemplates.find(p => p.id === selectedTemplateId)
+                return t ? (
+                  <div className="rounded-lg bg-green-50 border border-green-100 px-3 py-2 text-sm">
+                    <p className="text-xs text-gray-500">
+                      購買 {t.sessions} 次方案（NT${t.price}），本次預約使用第 1 次，剩餘 {t.sessions - 1} 次
+                    </p>
+                  </div>
+                ) : null
+              })()}
             </CardContent>
           </Card>
         )}

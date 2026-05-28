@@ -21,7 +21,8 @@ import {
 } from "lucide-react"
 import { signOut, useSession } from "next-auth/react"
 import { cn } from "@/lib/utils"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { NotificationBell } from "@/components/layout/notification-bell"
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "儀表板", ownerOnly: false },
@@ -40,6 +41,16 @@ export function Sidebar() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const [collapsed, setCollapsed] = useState(false)
+
+  // Auto-collapse on mobile
+  useEffect(() => {
+    function handleResize() {
+      if (window.innerWidth < 768) setCollapsed(true)
+    }
+    handleResize()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
 
   return (
     <aside
@@ -104,6 +115,11 @@ export function Sidebar() {
           </>
         )}
       </nav>
+
+      {/* Notification bell */}
+      <div className="border-t border-gray-800 px-2 pt-2">
+        <NotificationBell collapsed={collapsed} />
+      </div>
 
       {/* User + Logout */}
       <div className="border-t border-gray-800 p-3">

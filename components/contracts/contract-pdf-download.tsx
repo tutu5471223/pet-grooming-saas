@@ -50,7 +50,7 @@ export function ContractPDFDownload({ data }: { data: ContractPDFData }) {
   async function handleDownload() {
     setGenerating(true)
     try {
-      const { default: jsPDF } = await import("jspdf")
+      const { jsPDF } = await import("jspdf")
 
       const PAGE_W = 210 // mm
       const PAGE_H = 297 // mm

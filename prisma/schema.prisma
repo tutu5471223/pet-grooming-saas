@@ -490,6 +490,19 @@ model SaleItem {
   @@index([productId])
 }
 
+model Notification {
+  id        String   @id @default(cuid())
+  shopId    String
+  type      String   @default("BOOKING_REQUEST")
+  title     String
+  body      String?
+  isRead    Boolean  @default(false)
+  relatedId String?
+  createdAt DateTime @default(now())
+
+  @@index([shopId, isRead])
+}
+
 // ── 寵物包月美容方案 ──────────────────────────────────────────────────────────────
 model PetMonthlyPlan {
   id              String   @id @default(cuid())

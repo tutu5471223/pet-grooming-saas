@@ -69,6 +69,23 @@ export async function POST(
       },
     })
 
+    // 建立通知給店家
+    await prisma.notification.create({
+      data: {
+        shopId,
+        type: "BOOKING_REQUEST",
+        title: "新客人自助預約",
+        body: `${name}（${phone}）的寵物 ${petName} 申請預約美容，待確認。`,
+        relatedId: appointment.id,
+      },
+    }).catch(() => {}) // non-fatal
+
+    // Email stub：若有設定 SMTP 則發送，否則僅 log
+    const shopEmail = shop.email
+    if (shopEmail) {
+      console.log(`[EMAIL] To: ${shopEmail} | 新預約通知：${name} 的 ${petName} 申請 ${preferredDate ?? "近期"} 美容`)
+    }
+
     return NextResponse.json({ appointmentId: appointment.id }, { status: 201 })
   } catch (error) {
     console.error("POST /api/booking/[shopId]/request", error)

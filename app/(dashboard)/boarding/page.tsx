@@ -12,6 +12,7 @@ import { NewBoardingDialog } from "@/components/boarding/new-boarding-dialog"
 import { BoardingApptCheckin } from "@/components/boarding/boarding-appt-checkin"
 import { BoardingFilter } from "@/components/boarding/boarding-filter"
 import { BoardingWeekView, type WeekRecord } from "@/components/boarding/boarding-week-view"
+import { DeleteRoomButton } from "@/components/boarding/delete-room-button"
 import Link from "next/link"
 
 async function getBoardingData(shopId: string) {
@@ -110,7 +111,10 @@ async function getWeekViewRecords(shopId: string): Promise<WeekRecord[]> {
   return records.map((r) => ({
     id: r.id,
     petName: r.pet.name,
+    petBreed: r.pet.breed ?? r.pet.species,
+    petNotes: r.pet.notes ?? null,
     customerName: r.pet.customer.name,
+    customerPhone: r.pet.customer.phone,
     roomId: r.roomId,
     checkIn: r.checkIn.toISOString(),
     checkOut: r.checkOut?.toISOString() ?? null,
@@ -218,13 +222,14 @@ export default async function BoardingPage({
                   {filteredRecords.length === 0 ? (
                     <p className="text-sm text-gray-400 text-center py-4">查無符合條件的住宿紀錄</p>
                   ) : (
-                    <table className="w-full text-sm">
+                    <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
                       <thead className="border-b border-gray-100">
                         <tr>
-                          <th className="pb-2 text-left font-medium text-gray-500">寵物/客人</th>
-                          <th className="pb-2 text-left font-medium text-gray-500">房間</th>
-                          <th className="pb-2 text-left font-medium text-gray-500">入住</th>
-                          <th className="pb-2 text-left font-medium text-gray-500">退房</th>
+                          <th className="pb-2 text-left font-medium text-gray-500 whitespace-nowrap">寵物/客人</th>
+                          <th className="pb-2 text-left font-medium text-gray-500 whitespace-nowrap">房間</th>
+                          <th className="pb-2 text-left font-medium text-gray-500 whitespace-nowrap">入住</th>
+                          <th className="pb-2 text-left font-medium text-gray-500 whitespace-nowrap">退房</th>
                           <th className="pb-2 text-left font-medium text-gray-500">狀態</th>
                         </tr>
                       </thead>
@@ -252,6 +257,7 @@ export default async function BoardingPage({
                         })}
                       </tbody>
                     </table>
+                  </div>
                   )}
                 </CardContent>
               </Card>
@@ -287,6 +293,9 @@ export default async function BoardingPage({
                       </div>
                     )}
                     <p className="mt-1 text-xs text-gray-500">{formatCurrency(room.dailyRate)}/天</p>
+                    {room.status === "AVAILABLE" && (
+                      <DeleteRoomButton roomId={room.id} roomName={room.name} />
+                    )}
                   </div>
                 )
               })}
@@ -417,14 +426,15 @@ export default async function BoardingPage({
                 <CardTitle className="text-base">近期退房紀錄</CardTitle>
               </CardHeader>
               <CardContent>
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="border-b border-gray-100">
                     <tr>
                       <th className="pb-2 text-left font-medium text-gray-500">寵物/客人</th>
-                      <th className="pb-2 text-left font-medium text-gray-500">房間</th>
-                      <th className="pb-2 text-left font-medium text-gray-500">入住</th>
-                      <th className="pb-2 text-left font-medium text-gray-500">退房</th>
-                      <th className="pb-2 text-right font-medium text-gray-500">費用</th>
+                      <th className="pb-2 text-left font-medium text-gray-500 whitespace-nowrap">房間</th>
+                      <th className="pb-2 text-left font-medium text-gray-500 whitespace-nowrap">入住</th>
+                      <th className="pb-2 text-left font-medium text-gray-500 whitespace-nowrap">退房</th>
+                      <th className="pb-2 text-right font-medium text-gray-500 whitespace-nowrap">費用</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -434,16 +444,17 @@ export default async function BoardingPage({
                           <p className="font-medium text-gray-900">{r.pet.name}</p>
                           <p className="text-xs text-gray-500">{r.pet.customer.name}</p>
                         </td>
-                        <td className="py-2.5 text-gray-700">{r.room?.name ?? "—"}</td>
-                        <td className="py-2.5 text-gray-700">{formatDate(r.checkIn)}</td>
-                        <td className="py-2.5 text-gray-700">{formatDate(r.checkOut)}</td>
-                        <td className="py-2.5 text-right font-medium text-gray-900">
+                        <td className="py-2.5 text-gray-700 whitespace-nowrap">{r.room?.name ?? "—"}</td>
+                        <td className="py-2.5 text-gray-700 whitespace-nowrap">{formatDate(r.checkIn)}</td>
+                        <td className="py-2.5 text-gray-700 whitespace-nowrap">{formatDate(r.checkOut)}</td>
+                        <td className="py-2.5 text-right font-medium text-gray-900 whitespace-nowrap">
                           {r.totalCost ? formatCurrency(r.totalCost) : "—"}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                </div>
               </CardContent>
             </Card>
           )}

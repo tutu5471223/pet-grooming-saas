@@ -16,6 +16,7 @@ import {
   Scissors,
   CalendarDays,
   CreditCard,
+  Calendar,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -263,53 +264,54 @@ export default async function CustomerDetailPage({
                 const cs = contractStatusLabel(pet.contract?.status ?? "PENDING")
                 const lastGrooming = pet.groomingRecords[0]
                 return (
-                  <Link
-                    key={pet.id}
-                    href={`/customers/${customer.id}/pets/${pet.id}`}
-                  >
-                    <Card className="cursor-pointer hover:shadow-md transition-shadow">
-                      <CardContent className="p-5">
-                        <div className="flex items-start gap-3">
-                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-2xl shrink-0">
-                            {pet.species === "犬" ? "🐕" : pet.species === "貓" ? "🐈" : "🐾"}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <span className="font-semibold text-gray-900">{pet.name}</span>
-                                <span className="ml-2 text-sm text-gray-500">
-                                  {pet.breed ?? pet.species}
-                                </span>
-                              </div>
-                              <ChevronRight className="h-4 w-4 text-gray-400" />
-                            </div>
-
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {/* Contract status */}
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cs.color}`}
-                              >
-                                <FileText className="h-3 w-3" />
-                                {cs.label}
-                              </span>
-                              {/* Grooming count */}
-                              <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600">
-                                <Scissors className="h-3 w-3" />
-                                美容 {pet._count.groomingRecords} 次
-                              </span>
-                            </div>
-
-                            {lastGrooming && (
-                              <p className="mt-1.5 text-xs text-gray-500 flex items-center gap-1">
-                                <CalendarDays className="h-3 w-3" />
-                                上次到店 {formatDate(lastGrooming.date)}
-                              </p>
-                            )}
-                          </div>
+                  <Card key={pet.id} className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-5">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-2xl shrink-0">
+                          {pet.species === "犬" ? "🐕" : pet.species === "貓" ? "🐈" : "🐾"}
                         </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <Link href={`/customers/${customer.id}/pets/${pet.id}`} className="flex-1">
+                              <span className="font-semibold text-gray-900 hover:text-indigo-600">{pet.name}</span>
+                              <span className="ml-2 text-sm text-gray-500">
+                                {pet.breed ?? pet.species}
+                              </span>
+                            </Link>
+                            <Link
+                              href={`/appointments/new?petId=${pet.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Button size="sm" variant="outline" className="h-7 px-2 text-xs shrink-0 ml-2">
+                                <Calendar className="h-3 w-3 mr-1" />
+                                預約
+                              </Button>
+                            </Link>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cs.color}`}
+                            >
+                              <FileText className="h-3 w-3" />
+                              {cs.label}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600">
+                              <Scissors className="h-3 w-3" />
+                              美容 {pet._count.groomingRecords} 次
+                            </span>
+                          </div>
+
+                          {lastGrooming && (
+                            <p className="mt-1.5 text-xs text-gray-500 flex items-center gap-1">
+                              <CalendarDays className="h-3 w-3" />
+                              上次到店 {formatDate(lastGrooming.date)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 )
               })}
             </div>
@@ -325,28 +327,30 @@ export default async function CustomerDetailPage({
                   <p className="text-sm">暫無付款紀錄</p>
                 </div>
               ) : (
-                <table className="w-full text-sm">
-                  <thead className="border-b border-gray-100">
-                    <tr>
-                      <th className="px-5 py-3 text-left font-medium text-gray-500">時間</th>
-                      <th className="px-5 py-3 text-left font-medium text-gray-500">金額</th>
-                      <th className="px-5 py-3 text-left font-medium text-gray-500">方式</th>
-                      <th className="px-5 py-3 text-left font-medium text-gray-500">備註</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {customer.payments.map((p) => (
-                      <tr key={p.id}>
-                        <td className="px-5 py-3 text-gray-700">{formatDate(p.paidAt)}</td>
-                        <td className="px-5 py-3 font-medium text-gray-900">
-                          {formatCurrency(p.amount)}
-                        </td>
-                        <td className="px-5 py-3 text-gray-700">{p.paymentMethod ?? "—"}</td>
-                        <td className="px-5 py-3 text-gray-500">{p.notes ?? "—"}</td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-gray-100">
+                      <tr>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 whitespace-nowrap">時間</th>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 whitespace-nowrap">金額</th>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 whitespace-nowrap">方式</th>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500">備註</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {customer.payments.map((p) => (
+                        <tr key={p.id}>
+                          <td className="px-5 py-3 text-gray-700 whitespace-nowrap">{formatDate(p.paidAt)}</td>
+                          <td className="px-5 py-3 font-medium text-gray-900 whitespace-nowrap">
+                            {formatCurrency(p.amount)}
+                          </td>
+                          <td className="px-5 py-3 text-gray-700 whitespace-nowrap">{p.paymentMethod ?? "—"}</td>
+                          <td className="px-5 py-3 text-gray-500">{p.notes ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -365,26 +369,28 @@ export default async function CustomerDetailPage({
                   <p className="text-sm">暫無點數紀錄</p>
                 </div>
               ) : (
-                <table className="w-full text-sm">
-                  <thead className="border-b border-gray-100">
-                    <tr>
-                      <th className="px-5 py-3 text-left font-medium text-gray-500">時間</th>
-                      <th className="px-5 py-3 text-left font-medium text-gray-500">點數異動</th>
-                      <th className="px-5 py-3 text-left font-medium text-gray-500">原因</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {customer.pointsHistories.map((h) => (
-                      <tr key={h.id}>
-                        <td className="px-5 py-3 text-gray-700">{formatDateTime(h.createdAt)}</td>
-                        <td className={`px-5 py-3 font-medium ${h.points > 0 ? "text-green-600" : "text-red-600"}`}>
-                          {h.points > 0 ? "+" : ""}{h.points} 點
-                        </td>
-                        <td className="px-5 py-3 text-gray-700">{h.reason}</td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-gray-100">
+                      <tr>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 whitespace-nowrap">時間</th>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 whitespace-nowrap">點數異動</th>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500">原因</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {customer.pointsHistories.map((h) => (
+                        <tr key={h.id}>
+                          <td className="px-5 py-3 text-gray-700 whitespace-nowrap">{formatDateTime(h.createdAt)}</td>
+                          <td className={`px-5 py-3 font-medium whitespace-nowrap ${h.points > 0 ? "text-green-600" : "text-red-600"}`}>
+                            {h.points > 0 ? "+" : ""}{h.points} 點
+                          </td>
+                          <td className="px-5 py-3 text-gray-700">{h.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -403,26 +409,28 @@ export default async function CustomerDetailPage({
                   <p className="text-sm">暫無儲值紀錄</p>
                 </div>
               ) : (
-                <table className="w-full text-sm">
-                  <thead className="border-b border-gray-100">
-                    <tr>
-                      <th className="px-5 py-3 text-left font-medium text-gray-500">時間</th>
-                      <th className="px-5 py-3 text-left font-medium text-gray-500">金額異動</th>
-                      <th className="px-5 py-3 text-left font-medium text-gray-500">原因</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {customer.storedValueHistories.map((h) => (
-                      <tr key={h.id}>
-                        <td className="px-5 py-3 text-gray-700">{formatDateTime(h.createdAt)}</td>
-                        <td className={`px-5 py-3 font-medium ${h.amount > 0 ? "text-green-600" : "text-red-600"}`}>
-                          {h.amount > 0 ? "+" : ""}{formatCurrency(h.amount)}
-                        </td>
-                        <td className="px-5 py-3 text-gray-700">{h.reason}</td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-gray-100">
+                      <tr>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 whitespace-nowrap">時間</th>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 whitespace-nowrap">金額異動</th>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500">原因</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {customer.storedValueHistories.map((h) => (
+                        <tr key={h.id}>
+                          <td className="px-5 py-3 text-gray-700 whitespace-nowrap">{formatDateTime(h.createdAt)}</td>
+                          <td className={`px-5 py-3 font-medium whitespace-nowrap ${h.amount > 0 ? "text-green-600" : "text-red-600"}`}>
+                            {h.amount > 0 ? "+" : ""}{formatCurrency(h.amount)}
+                          </td>
+                          <td className="px-5 py-3 text-gray-700">{h.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </CardContent>
           </Card>

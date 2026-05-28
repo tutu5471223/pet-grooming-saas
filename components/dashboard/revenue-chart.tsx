@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import {
   BarChart,
   Bar,
@@ -8,13 +9,22 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Cell,
 } from "recharts"
 
 interface RevenueChartProps {
-  data: { month: string; revenue: number }[]
+  data: { month: string; yearMonth: string; revenue: number }[]
 }
 
 export function RevenueChart({ data }: RevenueChartProps) {
+  const router = useRouter()
+
+  function handleBarClick(entry: { yearMonth?: string }) {
+    if (entry.yearMonth) {
+      router.push(`/reports?month=${entry.yearMonth}`)
+    }
+  }
+
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
@@ -45,7 +55,21 @@ export function RevenueChart({ data }: RevenueChartProps) {
             boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
           }}
         />
-        <Bar dataKey="revenue" fill="#6366f1" radius={[4, 4, 0, 0]} name="收入" />
+        <Bar
+          dataKey="revenue"
+          radius={[4, 4, 0, 0]}
+          name="收入"
+          cursor="pointer"
+          onClick={(entry) => handleBarClick(entry as { yearMonth?: string })}
+        >
+          {data.map((entry, index) => (
+            <Cell
+              key={index}
+              fill="#6366f1"
+              className="hover:opacity-80 transition-opacity"
+            />
+          ))}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   )

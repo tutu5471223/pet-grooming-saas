@@ -9,12 +9,14 @@ import { formatDateTime } from "@/lib/utils"
 interface GroomingConfirmationProps {
   groomingId: string
   confirmedAt: string | null
+  signatureUrl?: string | null
 }
 
-export function GroomingConfirmation({ groomingId, confirmedAt }: GroomingConfirmationProps) {
+export function GroomingConfirmation({ groomingId, confirmedAt, signatureUrl }: GroomingConfirmationProps) {
   const sigRef = useRef<SignatureCanvas>(null)
   const [submitting, setSubmitting] = useState(false)
   const [confirmed, setConfirmed] = useState<string | null>(confirmedAt)
+  const [savedSignature, setSavedSignature] = useState<string | null>(signatureUrl ?? null)
   const [error, setError] = useState("")
 
   async function handleConfirm() {
@@ -37,6 +39,7 @@ export function GroomingConfirmation({ groomingId, confirmedAt }: GroomingConfir
       }
       const data = await res.json()
       setConfirmed(data.customerConfirmedAt)
+      setSavedSignature(signature)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "確認失敗，請重試")
     } finally {
@@ -46,7 +49,7 @@ export function GroomingConfirmation({ groomingId, confirmedAt }: GroomingConfir
 
   if (confirmed) {
     return (
-      <div className="rounded-2xl border border-green-200 bg-green-50 p-5">
+      <div className="rounded-2xl border border-green-200 bg-green-50 p-5 space-y-3">
         <div className="flex items-center gap-3">
           <CheckCircle2 className="h-6 w-6 text-green-600 shrink-0" />
           <div>
@@ -56,6 +59,15 @@ export function GroomingConfirmation({ groomingId, confirmedAt }: GroomingConfir
             </p>
           </div>
         </div>
+        {savedSignature && (
+          <div>
+            <p className="text-xs text-green-700 mb-1">客人手寫簽名：</p>
+            <div className="rounded-xl border border-green-200 bg-white overflow-hidden inline-block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={savedSignature} alt="客人簽名" className="max-w-[240px] h-auto" />
+            </div>
+          </div>
+        )}
       </div>
     )
   }

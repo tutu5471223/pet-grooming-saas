@@ -154,6 +154,7 @@ export default async function GroomingViewPage({ params }: { params: Promise<{ t
         <GroomingConfirmation
           groomingId={record.id}
           confirmedAt={record.customerConfirmedAt?.toISOString() ?? null}
+          signatureUrl={record.customerSignature ?? null}
         />
 
         <p className="text-center text-xs text-gray-400 pb-4">
