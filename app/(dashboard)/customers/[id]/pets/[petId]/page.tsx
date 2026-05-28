@@ -526,6 +526,15 @@ export default async function PetDetailPage({
 
         {/* Appointments */}
         <TabsContent value="appointments" className="mt-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-gray-900">預約記錄</h2>
+            <Link href={`/appointments/new?petId=${petId}`}>
+              <Button size="sm">
+                <Plus className="h-4 w-4" />
+                新增預約
+              </Button>
+            </Link>
+          </div>
           {pet.appointments.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 py-12 text-gray-400">
               <Calendar className="h-10 w-10 mb-2" />

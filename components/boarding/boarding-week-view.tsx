@@ -48,7 +48,7 @@ export function BoardingWeekView({
   const [selected, setSelected] = useState<WeekRecord | null>(null)
   const [logs, setLogs] = useState<DailyLog[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
-  const [newLog, setNewLog] = useState({ condition: "良好", note: "" })
+  const [newLog, setNewLog] = useState({ condition: "良好", note: "", date: new Date().toISOString().split("T")[0] })
   const [submitting, setSubmitting] = useState(false)
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -72,12 +72,12 @@ export function BoardingWeekView({
       const res = await fetch(`/api/boarding/${selected.id}/logs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ condition: newLog.condition, note: newLog.note || null }),
+        body: JSON.stringify({ condition: newLog.condition, note: newLog.note || null, date: newLog.date }),
       })
       if (res.ok) {
         const log: DailyLog = await res.json()
-        setLogs(prev => [log, ...prev])
-        setNewLog({ condition: "良好", note: "" })
+        setLogs(prev => [log, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
+        setNewLog({ condition: "良好", note: "", date: new Date().toISOString().split("T")[0] })
       }
     } finally {
       setSubmitting(false)
@@ -251,15 +251,23 @@ export function BoardingWeekView({
 
                 {/* Add log */}
                 <div className="rounded-xl border border-gray-200 p-3 space-y-2 mb-3">
-                  <select
-                    value={newLog.condition}
-                    onChange={e => setNewLog(p => ({ ...p, condition: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  >
-                    {["良好", "活潑", "食慾正常", "食慾不佳", "輕微不適", "需注意"].map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={newLog.date}
+                      onChange={e => setNewLog(p => ({ ...p, date: e.target.value }))}
+                      className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <select
+                      value={newLog.condition}
+                      onChange={e => setNewLog(p => ({ ...p, condition: e.target.value }))}
+                      className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      {["良好", "活潑", "食慾正常", "食慾不佳", "輕微不適", "需注意"].map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
                   <Textarea
                     placeholder="餵食/護理/狀況說明（選填）..."
                     value={newLog.note}
@@ -268,7 +276,7 @@ export function BoardingWeekView({
                     className="text-sm"
                   />
                   <Button size="sm" onClick={handleAddLog} disabled={submitting} className="w-full">
-                    {submitting ? "記錄中..." : "新增今日記錄"}
+                    {submitting ? "記錄中..." : "新增護理記錄"}
                   </Button>
                 </div>
 

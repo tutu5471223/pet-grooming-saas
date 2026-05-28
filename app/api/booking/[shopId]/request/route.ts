@@ -70,12 +70,19 @@ export async function POST(
     })
 
     // 建立通知給店家
+    const notifParts: string[] = [
+      `客人：${name}（${phone}）`,
+      `寵物：${petName}（${petSpecies || "犬"}）`,
+    ]
+    if (preferredDate) notifParts.push(`希望時間：${preferredDate}${preferredTime ? " " + preferredTime : ""}`)
+    if (notes?.trim()) notifParts.push(`備註：${notes.trim()}`)
+
     await prisma.notification.create({
       data: {
         shopId,
         type: "BOOKING_REQUEST",
-        title: "新客人自助預約",
-        body: `${name}（${phone}）的寵物 ${petName} 申請預約美容，待確認。`,
+        title: "新客人自助預約申請",
+        body: notifParts.join("\n"),
         relatedId: appointment.id,
       },
     }).catch(() => {}) // non-fatal

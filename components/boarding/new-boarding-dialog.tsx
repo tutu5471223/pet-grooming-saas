@@ -69,6 +69,7 @@ export function NewBoardingDialog({ shopId, rooms }: { shopId: string; rooms: Ro
   const [form, setForm] = useState({
     roomId: "",
     checkIn: new Date().toISOString().split("T")[0],
+    checkOut: "",
     notes: "",
     priceAdjustment: "",
     priceAdjustmentNote: "",
@@ -84,7 +85,7 @@ export function NewBoardingDialog({ shopId, rooms }: { shopId: string; rooms: Ro
       setSearchQuery("")
       setSearchResults([])
       setSelectedPet(null)
-      setForm({ roomId: "", checkIn: new Date().toISOString().split("T")[0], notes: "", priceAdjustment: "", priceAdjustmentNote: "" })
+      setForm({ roomId: "", checkIn: new Date().toISOString().split("T")[0], checkOut: "", notes: "", priceAdjustment: "", priceAdjustmentNote: "" })
       setAddOns([])
       setShowPricing(false)
     }
@@ -152,6 +153,7 @@ export function NewBoardingDialog({ shopId, rooms }: { shopId: string; rooms: Ro
         petId: selectedPet.id,
         roomId: form.roomId || null,
         checkIn: form.checkIn,
+        checkOut: form.checkOut || null,
         notes: form.notes || null,
         dailyRate: selectedRoom?.dailyRate ?? 0,
         priceAdjustment: adjustment || null,
@@ -251,13 +253,24 @@ export function NewBoardingDialog({ shopId, rooms }: { shopId: string; rooms: Ro
             </Select>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>入住日期</Label>
-            <Input
-              type="date"
-              value={form.checkIn}
-              onChange={(e) => setForm({ ...form, checkIn: e.target.value })}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>入住日期</Label>
+              <Input
+                type="date"
+                value={form.checkIn}
+                onChange={(e) => setForm({ ...form, checkIn: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>預計退房日期</Label>
+              <Input
+                type="date"
+                value={form.checkOut}
+                min={form.checkIn}
+                onChange={(e) => setForm({ ...form, checkOut: e.target.value })}
+              />
+            </div>
           </div>
 
           <div className="space-y-1.5">

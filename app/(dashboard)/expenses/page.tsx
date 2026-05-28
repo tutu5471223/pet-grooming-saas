@@ -137,16 +137,16 @@ export default function ExpensesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">支出管理</h1>
           <p className="text-sm text-gray-500 mt-1">{monthLabel(monthDate)} 支出記錄</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Month navigator */}
-          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-2 py-1">
+          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-2 py-1 shrink-0">
             <Button
               variant="ghost"
               size="icon"
@@ -155,7 +155,7 @@ export default function ExpensesPage() {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm font-medium text-gray-700 min-w-[120px] text-center">
+            <span className="text-sm font-medium text-gray-700 min-w-[90px] text-center">
               {monthLabel(monthDate)}
             </span>
             <Button
@@ -168,7 +168,7 @@ export default function ExpensesPage() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <Button onClick={openNew}>
+          <Button onClick={openNew} className="shrink-0">
             <Plus className="h-4 w-4 mr-1" />
             新增支出
           </Button>
