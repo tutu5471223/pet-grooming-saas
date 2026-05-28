@@ -1,6 +1,7 @@
 import { auth } from "@/auth"
 import { Lock } from "lucide-react"
 import { prisma } from "@/lib/prisma"
+import { headers } from "next/headers"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Scissors, Home, Star, FileText, Users, CreditCard, Link2, Bell, Zap } from "lucide-react"
 import { ServiceManager } from "@/components/settings/service-manager"
@@ -44,7 +45,10 @@ export default async function SettingsPage() {
   const currentUserId = session!.user.id
   const isAdmin = session!.user.role === "OWNER"
   const { shop, services, rooms, memberLevels, monthlyPlans, staff } = await getSettingsData(shopId)
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"
+  const hdrs = await headers()
+  const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "localhost:3000"
+  const proto = hdrs.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https")
+  const baseUrl = `${proto}://${host}`
 
   const staffForClient = staff.map((s) => ({
     ...s,

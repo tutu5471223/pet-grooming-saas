@@ -92,20 +92,31 @@ export function AppointmentActions({
 
   return (
     <>
-      <div className="relative mt-2 inline-block">
-        <select
-          value={optimisticStatus}
-          onChange={(e) => updateStatus(e.target.value)}
-          disabled={loading}
-          className="appearance-none rounded-lg border border-gray-200 bg-white py-1 pl-2 pr-7 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer disabled:opacity-50"
-        >
-          {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+      <div className="flex items-center gap-1.5 flex-wrap mt-2">
+        {optimisticStatus === "PENDING" && (
+          <button
+            onClick={() => updateStatus("CONFIRMED")}
+            disabled={loading}
+            className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            確認
+          </button>
+        )}
+        <div className="relative inline-block">
+          <select
+            value={optimisticStatus}
+            onChange={(e) => updateStatus(e.target.value)}
+            disabled={loading}
+            className="appearance-none rounded-lg border border-gray-200 bg-white py-1 pl-2 pr-7 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer disabled:opacity-50"
+          >
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+        </div>
       </div>
 
       {notifyInfo && (

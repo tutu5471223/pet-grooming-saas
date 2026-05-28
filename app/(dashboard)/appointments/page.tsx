@@ -166,6 +166,8 @@ export default async function AppointmentsPage({
                   scheduledAt: a.scheduledAt.toISOString(),
                 }))}
                 weekStart={weekStart}
+                shopName={shop?.name ?? session!.user.shopName}
+                shopPhone={shop?.phone ?? null}
               />
             )}
           </CardContent>
@@ -195,7 +197,7 @@ export default async function AppointmentsPage({
                           className={`h-3 w-3 rounded-full mx-auto mb-1 ${STATUS_COLORS[apt.status] ?? "bg-gray-300"}`}
                         />
                         <p className="text-sm font-bold text-gray-900">
-                          {format(new Date(apt.scheduledAt), "HH:mm")}
+                          {new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Taipei", hour12: false }).format(new Date(apt.scheduledAt))}
                         </p>
                         {apt.duration && (
                           <p className="text-xs text-gray-400">{apt.duration}分鐘</p>
@@ -273,7 +275,7 @@ export default async function AppointmentsPage({
                         />
                         {apt.status === "CONFIRMED" && apt.type !== "BOARDING" && (
                           <Link
-                            href={`/customers/${apt.pet.customer.id}/pets/${apt.pet.id}/grooming/new?appointmentId=${apt.id}&date=${format(apt.scheduledAt, "yyyy-MM-dd")}&staffId=${apt.staffId ?? ""}&services=${encodeURIComponent(apt.services ?? "[]")}`}
+                            href={`/customers/${apt.pet.customer.id}/pets/${apt.pet.id}/grooming/new?appointmentId=${apt.id}&date=${new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Taipei" }).format(new Date(apt.scheduledAt))}&staffId=${apt.staffId ?? ""}&services=${encodeURIComponent(apt.services ?? "[]")}`}
                           >
                             <button className="mt-0.5 flex items-center gap-1 rounded-lg border border-purple-300 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100 transition-colors">
                               <Scissors className="h-3 w-3" />

@@ -35,9 +35,11 @@ const HOURS = Array.from({ length: 13 }, (_, i) => i + 8) // 8–20
 interface Props {
   appointments: Appointment[]
   weekStart: Date
+  shopName: string
+  shopPhone: string | null
 }
 
-export function WeekCalendar({ appointments, weekStart }: Props) {
+export function WeekCalendar({ appointments, weekStart, shopName, shopPhone }: Props) {
   const router = useRouter()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = selectedId ? (appointments.find((a) => a.id === selectedId) ?? null) : null
@@ -180,7 +182,19 @@ export function WeekCalendar({ appointments, weekStart }: Props) {
             <span className={`inline-flex text-xs rounded-full px-2 py-0.5 ${appointmentStatusLabel(selected.status).color}`}>
               {appointmentStatusLabel(selected.status).label}
             </span>
-            <AppointmentActions appointmentId={selected.id} currentStatus={selected.status} />
+            <AppointmentActions
+              appointmentId={selected.id}
+              currentStatus={selected.status}
+              notifyInfo={{
+                petName: selected.pet.name,
+                customerName: selected.pet.customer.name,
+                scheduledAt: typeof selected.scheduledAt === "string" ? selected.scheduledAt : (selected.scheduledAt as Date).toISOString(),
+                services: selected.services,
+                estimatedCost: selected.estimatedCost,
+                shopName,
+                shopPhone,
+              }}
+            />
             <button
               onClick={() => handleDelete(selected.id)}
               className="flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-600 hover:bg-red-100"
