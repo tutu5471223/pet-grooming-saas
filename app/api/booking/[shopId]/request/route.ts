@@ -37,20 +37,18 @@ export async function POST(
       })
     }
 
-    // All times stored in UTC; use explicit +08:00 offset so Render (UTC) server
-    // produces the correct Taiwan-local time regardless of server timezone.
+    // All times stored in UTC; explicit +08:00 offset ensures correctness on UTC servers.
+    const timeStr = /^\d{2}:\d{2}$/.test(preferredTime ?? "") ? preferredTime : "09:00"
     let scheduledAt: Date
     if (preferredDate) {
-      // 09:00 AM Taiwan time (UTC+8) = 01:00 UTC
-      scheduledAt = new Date(`${preferredDate}T09:00:00+08:00`)
+      scheduledAt = new Date(`${preferredDate}T${timeStr}:00+08:00`)
     } else {
-      // Tomorrow at 09:00 AM Taiwan time
       const tomorrowTW = new Date(new Date().toLocaleString("sv-SE", { timeZone: "Asia/Taipei" }))
       tomorrowTW.setDate(tomorrowTW.getDate() + 1)
       const yy = tomorrowTW.getFullYear()
       const mm = String(tomorrowTW.getMonth() + 1).padStart(2, "0")
       const dd = String(tomorrowTW.getDate()).padStart(2, "0")
-      scheduledAt = new Date(`${yy}-${mm}-${dd}T09:00:00+08:00`)
+      scheduledAt = new Date(`${yy}-${mm}-${dd}T${timeStr}:00+08:00`)
     }
 
     const estimatedCost =

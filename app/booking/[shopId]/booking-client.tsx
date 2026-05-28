@@ -426,10 +426,10 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="preferredTime" className="text-xs">偏好時段（選填）</Label>
+                    <Label htmlFor="preferredTime" className="text-xs">偏好時間（選填）</Label>
                     <Input
                       id="preferredTime"
-                      placeholder="如：上午10點、下午2-4點"
+                      type="time"
                       value={form.preferredTime}
                       onChange={(e) => setForm({ ...form, preferredTime: e.target.value })}
                       className="h-9 text-sm"
