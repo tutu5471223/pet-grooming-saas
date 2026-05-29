@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
 import { ContractSigner } from "@/components/contracts/contract-signer"
 import { ContractPDFDownload } from "@/components/contracts/contract-pdf-download"
+import { ContractRegisterClient } from "@/components/contracts/contract-register-client"
 import { CheckCircle2, Scissors } from "lucide-react"
 import { formatDateTime } from "@/lib/utils"
 
@@ -23,7 +24,23 @@ export default async function ContractPage({ params }: { params: Promise<{ token
   const { token } = await params
   const contract = await getContractByToken(token)
 
-  if (!contract) notFound()
+  // If no contract found by token, check if it's a shopId for new-customer registration
+  if (!contract) {
+    const shop = await prisma.shop.findUnique({
+      where: { id: token },
+      select: { id: true, name: true, contractTemplate: true },
+    })
+    if (shop) {
+      return (
+        <ContractRegisterClient
+          shopId={shop.id}
+          shopName={shop.name}
+          contractTemplate={shop.contractTemplate ?? ""}
+        />
+      )
+    }
+    notFound()
+  }
 
   if (contract.status === "SIGNED") {
     const shopName = await getShopName(contract.shopId)
