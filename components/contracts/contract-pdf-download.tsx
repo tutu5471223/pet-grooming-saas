@@ -19,7 +19,7 @@ export interface ContractPDFData {
 // px per mm at 150 dpi
 const DPM = 150 / 25.4
 
-function makeCanvas(widthPx: number, heightPx: number) {
+function makeCanvas(widthPx: number, heightPx: number): HTMLCanvasElement {
   const c = document.createElement("canvas")
   c.width = widthPx
   c.height = heightPx
@@ -50,19 +50,36 @@ export function ContractPDFDownload({ data }: { data: ContractPDFData }) {
   async function handleDownload() {
     setGenerating(true)
     try {
-      const { jsPDF } = await import("jspdf")
+      console.log("[PDF] 開始生成 PDF...")
 
-      const PAGE_W = 210 // mm
-      const PAGE_H = 297 // mm
-      const MARGIN = 15  // mm
-      const CW = PAGE_W - MARGIN * 2 // content width mm
+      // Guard: must run in browser
+      if (typeof window === "undefined" || typeof document === "undefined") {
+        throw new Error("PDF 生成必須在瀏覽器環境執行")
+      }
+      console.log("[PDF] 瀏覽器環境確認 OK")
+
+      // Import jsPDF — use named export, fall back to default
+      console.log("[PDF] 載入 jsPDF 模組...")
+      const jspdfModule = await import("jspdf")
+      const JsPDF = jspdfModule.jsPDF ?? (jspdfModule as { default?: unknown }).default
+      if (typeof JsPDF !== "function") {
+        throw new Error(`jsPDF import 失敗，模組 keys: ${Object.keys(jspdfModule).join(",")}`)
+      }
+      console.log("[PDF] jsPDF 載入成功")
+
+      const PAGE_W = 210
+      const PAGE_H = 297
+      const MARGIN = 15
+      const CW = PAGE_W - MARGIN * 2
       const CW_PX = Math.round(CW * DPM)
       const FONT = `"Noto Sans TC","Microsoft JhengHei","PingFang TC",sans-serif`
 
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
-      let y = MARGIN // current Y in mm
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pdf = new (JsPDF as any)({ orientation: "portrait", unit: "mm", format: "a4" })
+      console.log("[PDF] jsPDF 實例建立成功")
 
-      // Adds a block of lines to the PDF, handles page breaks, returns height added (mm)
+      let y = MARGIN
+
       function block(
         lines: string[],
         fsz: number,
@@ -75,14 +92,12 @@ export function ContractPDFDownload({ data }: { data: ContractPDFData }) {
         const canvH = Math.ceil(lines.length * lhPx + padPx * 2 + 6)
 
         const cv = makeCanvas(CW_PX, canvH)
-        const ctx = cv.getContext("2d")!
+        const ctx = cv.getContext("2d")
+        if (!ctx) throw new Error(`Canvas getContext("2d") 回傳 null，canvas 尺寸 ${CW_PX}x${canvH}`)
+
         ctx.font = `${bold ? "bold " : ""}${fszPx}px ${FONT}`
         ctx.textBaseline = "top"
-
-        if (bg) {
-          ctx.fillStyle = bg
-          ctx.fillRect(0, 0, CW_PX, canvH)
-        }
+        if (bg) { ctx.fillStyle = bg; ctx.fillRect(0, 0, CW_PX, canvH) }
         ctx.fillStyle = color
         lines.forEach((l, i) => ctx.fillText(l, padPx + 2, padPx + 3 + i * lhPx))
 
@@ -92,40 +107,41 @@ export function ContractPDFDownload({ data }: { data: ContractPDFData }) {
         return hMM
       }
 
-      // Splits raw text into wrapped lines using a temp canvas
       function measure(text: string, fsz: number, bold = false): string[] {
-        const cv = makeCanvas(CW_PX, 4)
-        const ctx = cv.getContext("2d")!
+        const cv = makeCanvas(CW_PX, 10)
+        const ctx = cv.getContext("2d")
+        if (!ctx) throw new Error(`measure canvas getContext("2d") 回傳 null`)
         ctx.font = `${bold ? "bold " : ""}${fsz * DPM}px ${FONT}`
         return wrapText(ctx, text, CW_PX - 6)
       }
 
-      // ── Title ──
+      console.log("[PDF] 開始繪製內容...")
+
+      // Title
       y += block(measure(data.shopName, 11), 11, { color: "#4f46e5" })
       y += 3
       y += block(measure("寵物美容服務合約", 20, true), 20, { bold: true })
       y += 5
 
-      // ── Pet info box ──
+      // Pet info
       y += block(
         measure(`寵物姓名：${data.petName}（${data.breed ?? data.species}）\n飼主姓名：${data.customerName}`, 13),
-        13,
-        { bg: "#f5f3ff", padMM: 3.5 }
+        13, { bg: "#f5f3ff", padMM: 3.5 }
       )
       y += 5
 
-      // ── Contract content ──
+      // Contract content
+      console.log("[PDF] 繪製合約內容...")
       const plainContent = data.contractContent
         .replace(/<br\s*\/?>/gi, "\n")
         .replace(/<[^>]+>/g, "")
       const contentLines = measure(plainContent, 12.5)
-      // Render in chunks of 12 lines to keep canvas sizes small
       for (let i = 0; i < contentLines.length; i += 12) {
         y += block(contentLines.slice(i, i + 12), 12.5)
       }
       y += 5
 
-      // ── Signature info ──
+      // Signature info
       y += block(["── 簽署資訊 ──"], 11, { color: "#9ca3af" })
       y += 2
 
@@ -143,8 +159,9 @@ export function ContractPDFDownload({ data }: { data: ContractPDFData }) {
         y += 3
       }
 
-      // ── Signature image ──
+      // Signature image
       if (data.signatureUrl) {
+        console.log("[PDF] 載入簽名圖片...")
         y += block(["手寫簽名："], 11, { color: "#6b7280" })
         y += 2
 
@@ -152,31 +169,43 @@ export function ContractPDFDownload({ data }: { data: ContractPDFData }) {
           const img = new Image()
           img.crossOrigin = "anonymous"
           img.onload = () => {
-            const sigWmm = Math.min(75, CW)
-            const sigHmm = (img.naturalHeight / img.naturalWidth) * sigWmm
-            if (y + sigHmm > PAGE_H - MARGIN) { pdf.addPage(); y = MARGIN }
-
-            const sc = makeCanvas(img.naturalWidth, img.naturalHeight)
-            const sctx = sc.getContext("2d")!
-            sctx.fillStyle = "#ffffff"
-            sctx.fillRect(0, 0, sc.width, sc.height)
-            sctx.drawImage(img, 0, 0)
-            pdf.addImage(sc.toDataURL("image/png"), "PNG", MARGIN, y, sigWmm, sigHmm)
-            y += sigHmm
+            try {
+              const sigWmm = Math.min(75, CW)
+              const sigHmm = (img.naturalHeight / img.naturalWidth) * sigWmm
+              if (y + sigHmm > PAGE_H - MARGIN) { pdf.addPage(); y = MARGIN }
+              const sc = makeCanvas(img.naturalWidth, img.naturalHeight)
+              const sctx = sc.getContext("2d")
+              if (sctx) {
+                sctx.fillStyle = "#ffffff"
+                sctx.fillRect(0, 0, sc.width, sc.height)
+                sctx.drawImage(img, 0, 0)
+                pdf.addImage(sc.toDataURL("image/png"), "PNG", MARGIN, y, sigWmm, sigHmm)
+                y += sigHmm
+                console.log("[PDF] 簽名圖片繪製完成")
+              }
+            } catch (e) {
+              console.error("[PDF] 簽名圖片繪製失敗（略過）:", e)
+            }
             resolve()
           }
-          img.onerror = () => resolve()
+          img.onerror = (e) => {
+            console.error("[PDF] 簽名圖片載入失敗（略過）:", e)
+            resolve()
+          }
           img.src = data.signatureUrl!
         })
       }
 
-      // Use arraybuffer + object URL instead of pdf.save() — the Node.js jsPDF
-      // build's save() calls fs.writeFileSync which throws in browser bundles.
+      // Download — use output("blob") directly, no fs API involved
+      console.log("[PDF] 輸出 Blob...")
+      const blob: Blob = pdf.output("blob")
+      console.log("[PDF] Blob 大小:", blob.size, "bytes, type:", blob.type)
+
       const today = new Date().toISOString().split("T")[0]
       const filename = `合約_${data.petName}_${today}.pdf`
-      const ab = pdf.output("arraybuffer")
-      const blob = new Blob([ab], { type: "application/pdf" })
       const url = URL.createObjectURL(blob)
+      console.log("[PDF] Object URL 建立成功")
+
       const a = document.createElement("a")
       a.href = url
       a.download = filename
@@ -184,9 +213,12 @@ export function ContractPDFDownload({ data }: { data: ContractPDFData }) {
       a.click()
       document.body.removeChild(a)
       setTimeout(() => URL.revokeObjectURL(url), 30000)
+      console.log("[PDF] 下載已觸發，檔名:", filename)
+
     } catch (err) {
-      console.error("PDF generation failed", err)
-      alert("PDF 生成失敗，請重試")
+      console.error("[PDF] 生成失敗:", err)
+      console.error("[PDF] 錯誤 stack:", err instanceof Error ? err.stack : "（無 stack）")
+      alert("PDF 生成失敗，請重試\n\n請打開瀏覽器 DevTools（F12）Console 查看詳細錯誤")
     } finally {
       setGenerating(false)
     }
