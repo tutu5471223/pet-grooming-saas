@@ -170,8 +170,20 @@ export function ContractPDFDownload({ data }: { data: ContractPDFData }) {
         })
       }
 
+      // Use arraybuffer + object URL instead of pdf.save() — the Node.js jsPDF
+      // build's save() calls fs.writeFileSync which throws in browser bundles.
       const today = new Date().toISOString().split("T")[0]
-      pdf.save(`合約_${data.petName}_${today}.pdf`)
+      const filename = `合約_${data.petName}_${today}.pdf`
+      const ab = pdf.output("arraybuffer")
+      const blob = new Blob([ab], { type: "application/pdf" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 30000)
     } catch (err) {
       console.error("PDF generation failed", err)
       alert("PDF 生成失敗，請重試")

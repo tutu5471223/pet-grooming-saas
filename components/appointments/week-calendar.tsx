@@ -63,13 +63,39 @@ export function WeekCalendar({ appointments, weekStart, shopName, shopPhone }: P
     staffColorMap[id] = STAFF_COLORS[i % STAFF_COLORS.length]
   })
 
-  function getApptStyle(appt: Appointment) {
-    const start = new Date(appt.scheduledAt)
-    const minutesSince8 = (start.getHours() - 8) * 60 + start.getMinutes()
-    const duration = appt.duration ?? 60
-    const top = (minutesSince8 / 60) * 56 // 56px per hour
-    const height = Math.max(24, (duration / 60) * 56)
-    return { top, height }
+  interface ApptLayout {
+    appt: Appointment
+    col: number
+    maxCols: number
+    top: number
+    height: number
+  }
+
+  function computeDayLayout(appts: Appointment[]): ApptLayout[] {
+    if (appts.length === 0) return []
+    const items = appts.map(appt => {
+      const start = new Date(appt.scheduledAt)
+      const startMin = (start.getHours() - 8) * 60 + start.getMinutes()
+      const duration = appt.duration ?? 60
+      const endMin = startMin + duration
+      return { appt, startMin, endMin, col: 0, maxCols: 1 }
+    }).sort((a, b) => a.startMin - b.startMin)
+    const colEnds: number[] = []
+    for (const item of items) {
+      const idx = colEnds.findIndex(e => e <= item.startMin)
+      item.col = idx === -1 ? colEnds.length : idx
+      if (idx === -1) colEnds.push(item.endMin)
+      else colEnds[idx] = item.endMin
+    }
+    for (const item of items) {
+      const peers = items.filter(o => o !== item && o.startMin < item.endMin && item.startMin < o.endMin)
+      item.maxCols = peers.length > 0 ? Math.max(item.col, ...peers.map(p => p.col)) + 1 : 1
+    }
+    return items.map(({ appt, col, maxCols, startMin, endMin }) => ({
+      appt, col, maxCols,
+      top: (startMin / 60) * 56,
+      height: Math.max(24, ((endMin - startMin) / 60) * 56),
+    }))
   }
 
   function getApptColor(appt: Appointment) {
@@ -131,17 +157,27 @@ export function WeekCalendar({ appointments, weekStart, shopName, shopPhone }: P
                   ))}
 
                   {/* Appointments */}
-                  {dayAppts.map((appt) => {
-                    const { top, height } = getApptStyle(appt)
+                  {computeDayLayout(dayAppts).map(({ appt, col, maxCols, top, height }) => {
                     const color = getApptColor(appt)
+                    const colWidthPct = 100 / maxCols
+                    const leftPct = col * colWidthPct
                     return (
                       <button
                         key={appt.id}
                         onClick={() => setSelectedId(selectedId === appt.id ? null : appt.id)}
-                        className={`absolute left-0.5 right-0.5 rounded border-l-2 px-1 py-0.5 text-left text-xs overflow-hidden transition-shadow hover:shadow-md ${color}`}
-                        style={{ top, height }}
+                        className={`absolute rounded border-l-2 px-1 py-0.5 text-left text-xs overflow-hidden transition-shadow hover:shadow-md ${color}`}
+                        style={{
+                          top,
+                          height,
+                          left: `calc(${leftPct}% + 1px)`,
+                          width: `calc(${colWidthPct}% - 2px)`,
+                        }}
                       >
-                        <p className="font-semibold truncate leading-tight">{appt.pet.name}</p>
+                        <p className="font-semibold truncate leading-tight">
+                          {appt.status === "PENDING" && <span className="mr-0.5">⚠️</span>}
+                          {appt.type === "GROOMING" && <span className="mr-0.5">✂️</span>}
+                          {appt.pet.name}
+                        </p>
                         <p className="truncate leading-tight opacity-75">{appt.pet.customer.name}</p>
                       </button>
                     )
