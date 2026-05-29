@@ -98,6 +98,17 @@ export function WeekCalendar({ appointments, weekStart, shopName, shopPhone }: P
     }))
   }
 
+  function hasGroomingService(services: string | null): boolean {
+    if (!services) return false
+    try {
+      const svcs = JSON.parse(services) as { name: string; category?: string | null }[]
+      // New appointments store category; fall back to name keyword for old records
+      if (svcs.some(s => s.category === "美容")) return true
+      if (svcs.some(s => s.category && s.category !== "美容")) return false
+      return svcs.some(s => /美容/.test(s.name))
+    } catch { return false }
+  }
+
   function getApptColor(appt: Appointment) {
     if (appt.staff?.id && staffColorMap[appt.staff.id]) return staffColorMap[appt.staff.id]
     return "bg-gray-100 border-gray-400 text-gray-900"
@@ -175,7 +186,7 @@ export function WeekCalendar({ appointments, weekStart, shopName, shopPhone }: P
                       >
                         <p className="font-semibold truncate leading-tight">
                           {appt.status === "PENDING" && <span className="mr-0.5">⚠️</span>}
-                          {appt.type === "GROOMING" && <span className="mr-0.5">✂️</span>}
+                          {hasGroomingService(appt.services) && <span className="mr-0.5">✂️</span>}
                           {appt.pet.name}
                         </p>
                         <p className="truncate leading-tight opacity-75">{appt.pet.customer.name}</p>

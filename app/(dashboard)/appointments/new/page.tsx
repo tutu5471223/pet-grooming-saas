@@ -51,6 +51,7 @@ interface SelectedService {
   defaultPrice: number
   duration: number | null
   isCustomPrice: boolean
+  category: string | null
 }
 
 interface ActivePlan {
@@ -291,6 +292,7 @@ export default function NewAppointmentPage() {
         price: customPrice !== undefined ? customPrice : svc.price,
         duration: svc.duration,
         isCustomPrice: customPrice !== undefined,
+        category: svc.category,
       },
     ])
   }
@@ -355,7 +357,7 @@ export default function NewAppointmentPage() {
           status: "PENDING",
           services:
             form.type !== "BOARDING"
-              ? selectedServices.map(({ name, price }) => ({ name, price }))
+              ? selectedServices.map(({ name, price, category }) => ({ name, price, category }))
               : [],
           estimatedCost: form.estimatedCost ? Number(form.estimatedCost) : null,
           notes: form.notes || null,
