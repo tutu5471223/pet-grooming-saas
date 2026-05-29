@@ -427,13 +427,21 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="preferredTime" className="text-xs">偏好時間（選填）</Label>
-                    <Input
+                    <select
                       id="preferredTime"
-                      type="time"
                       value={form.preferredTime}
                       onChange={(e) => setForm({ ...form, preferredTime: e.target.value })}
-                      className="h-9 text-sm"
-                    />
+                      className="w-full h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="">不指定</option>
+                      {Array.from({ length: 25 }, (_, i) => {
+                        const hour = String(Math.floor(i / 2) + 8).padStart(2, "0")
+                        const min = i % 2 === 0 ? "00" : "30"
+                        return `${hour}:${min}`
+                      }).map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="space-y-1.5">
