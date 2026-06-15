@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { sendLineMessage, buildBaseUrl } from "@/lib/line"
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const shopId = session.user.shopId
+  const baseUrl = buildBaseUrl(req)
   const body = await req.json()
 
   // SECURITY: Verify pet belongs to this shop before creating record.
@@ -87,6 +89,27 @@ export async function POST(req: NextRequest) {
 
       return groomingRecord
     })
+
+    // Auto LINE notification on grooming completion
+    const customer = await prisma.customer.findUnique({
+      where: { id: pet.customerId },
+      select: { lineId: true, name: true },
+    })
+    if (customer?.lineId) {
+      const shop = await prisma.shop.findUnique({
+        where: { id: shopId },
+        select: { name: true, lineChannelToken: true },
+      })
+      const viewUrl = `${baseUrl}/grooming/${record.viewToken}`
+      const msg = [
+        `【${shop?.name ?? "寵物美容店"}】`,
+        `${pet.name} 的美容服務已完成，感謝您的光臨！`,
+        ``,
+        `📋 請點擊以下連結查看本次美容紀錄：`,
+        viewUrl,
+      ].join("\n")
+      void sendLineMessage(customer.lineId, msg, shop?.lineChannelToken ?? null)
+    }
 
     return NextResponse.json(record, { status: 201 })
   } catch (error) {

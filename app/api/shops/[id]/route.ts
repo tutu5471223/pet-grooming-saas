@@ -29,6 +29,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         restDays: body.restDays !== undefined ? JSON.stringify(body.restDays) : undefined,
         reminderTemplate: body.reminderTemplate ?? undefined,
         contractTemplate: body.contractTemplate ?? undefined,
+        lineChannelToken: body.lineChannelToken !== undefined ? (body.lineChannelToken ?? null) : undefined,
       },
     })
 

@@ -3,7 +3,7 @@ import { Lock } from "lucide-react"
 import { prisma } from "@/lib/prisma"
 import { headers } from "next/headers"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Scissors, Home, Star, FileText, Users, CreditCard, Link2, Bell, Zap } from "lucide-react"
+import { Scissors, Home, Star, FileText, Users, CreditCard, Link2, Bell, Zap, MessageCircle } from "lucide-react"
 import { ServiceManager } from "@/components/settings/service-manager"
 import { RoomManager } from "@/components/settings/room-manager"
 import { ContractTemplateEditor } from "@/components/settings/contract-template-editor"
@@ -13,6 +13,7 @@ import { MonthlyPlanManager } from "@/components/settings/monthly-plan-manager"
 import { BookingLink } from "@/components/settings/booking-link"
 import { ReminderSettings } from "@/components/settings/reminder-settings"
 import { SubscriptionInfo } from "@/components/settings/subscription-info"
+import { LineSettings } from "@/components/settings/line-settings"
 
 function AccessDeniedTab() {
   return (
@@ -88,6 +89,9 @@ export default async function SettingsPage() {
           <TabsTrigger value="reminder" className="gap-1.5">
             <Bell className="h-4 w-4" /> 提醒設定
           </TabsTrigger>
+          <TabsTrigger value="line" className="gap-1.5">
+            <MessageCircle className="h-4 w-4" /> LINE 設定
+          </TabsTrigger>
           <TabsTrigger value="subscription" className="gap-1.5">
             <Zap className="h-4 w-4" /> 訂閱方案
           </TabsTrigger>
@@ -133,6 +137,16 @@ export default async function SettingsPage() {
             shopId={shopId}
             initialTemplate={shop?.reminderTemplate ?? null}
           />
+        </TabsContent>
+
+        <TabsContent value="line" className="mt-4">
+          {isAdmin ? (
+            <LineSettings
+              shopId={shopId}
+              webhookUrl={`${baseUrl}/api/line/webhook`}
+              initialToken={shop?.lineChannelToken ?? null}
+            />
+          ) : <AccessDeniedTab />}
         </TabsContent>
 
         <TabsContent value="subscription" className="mt-4">

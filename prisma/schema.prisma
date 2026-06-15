@@ -26,6 +26,7 @@ model Shop {
   businessHoursEnd   String?
   restDays           String?
   reminderTemplate   String?
+  lineChannelToken   String?
   status             String   @default("ACTIVE")
   registeredAt       DateTime @default(now())
   onboardingDone     Boolean  @default(true)

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { sendLineMessage } from "@/lib/line"
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -44,9 +45,48 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       include: {
         pet: { include: { customer: true, contract: true } },
         staff: true,
-        shop: { select: { name: true, phone: true } },
+        shop: { select: { name: true, phone: true, lineChannelToken: true } },
       },
     })
+
+    // Auto LINE notification on first CONFIRMED
+    if (
+      body.status === "CONFIRMED" &&
+      existing.status !== "CONFIRMED" &&
+      updated?.pet.customer.lineId
+    ) {
+      const scheduledAt = updated.scheduledAt
+      const twTime = new Intl.DateTimeFormat("zh-TW", {
+        timeZone: "Asia/Taipei",
+        month: "numeric",
+        day: "numeric",
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(scheduledAt)
+
+      let svcLine = ""
+      try {
+        const svcs = JSON.parse(updated.services ?? "[]") as { name: string }[]
+        svcLine = svcs.map((s) => s.name).join("、")
+      } catch { /* ignore */ }
+
+      const lines = [
+        `【${updated.shop.name}】您好，您的預約已確認！`,
+        `📅 時間：${twTime}`,
+        `🐾 寵物：${updated.pet.name}`,
+      ]
+      if (svcLine) lines.push(`✂️ 服務：${svcLine}`)
+      if (updated.shop.phone) lines.push(`📞 如需更改請來電：${updated.shop.phone}`)
+      else lines.push("如需更改請提前告知，謝謝！")
+
+      void sendLineMessage(
+        updated.pet.customer.lineId,
+        lines.join("\n"),
+        updated.shop.lineChannelToken
+      )
+    }
 
     return NextResponse.json(updated)
   } catch (error) {
