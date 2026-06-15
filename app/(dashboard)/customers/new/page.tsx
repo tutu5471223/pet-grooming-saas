@@ -158,32 +158,28 @@ export default function NewCustomerPage() {
     if (!scanPreview) return
     setScanLoading(true)
     setScanError("")
-    setScanProgress(5)
-    setScanStatus("載入 OCR 引擎...")
+    setScanProgress(20)
+    setScanStatus("上傳圖片中...")
 
     try {
-      const { recognize } = await import("tesseract.js")
-      const { data: { text } } = await recognize(
-        scanPreview,
-        "chi_tra+eng",
-        {
-          logger: (m: { status: string; progress: number }) => {
-            if (m.status === "loading tesseract core") {
-              setScanStatus("載入 OCR 引擎...")
-              setScanProgress(10)
-            } else if (m.status === "loading language traineddata") {
-              setScanStatus("載入語言模型中...")
-              setScanProgress(15 + Math.round(m.progress * 35))
-            } else if (m.status.startsWith("initializing")) {
-              setScanStatus("初始化...")
-              setScanProgress(55)
-            } else if (m.status === "recognizing text") {
-              setScanStatus("辨識中...")
-              setScanProgress(60 + Math.round(m.progress * 38))
-            }
-          },
-        }
-      )
+      setScanProgress(40)
+      setScanStatus("辨識中...")
+
+      const res = await fetch("/api/ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: scanPreview }),
+      })
+
+      setScanProgress(80)
+      setScanStatus("解析資料...")
+
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        throw new Error(data.error ?? "辨識失敗")
+      }
+
+      const { text } = await res.json() as { text: string }
 
       const parsed = parseCustomerText(text)
       setForm({
