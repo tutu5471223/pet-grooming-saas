@@ -9,112 +9,67 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-
-interface ScannedPet {
-  name: string | null
-  species: string | null
-  breed: string | null
-  gender: string | null
-  birthday: string | null
-  chipNumber: string | null
-  specialConditions: string | null
-  allergies: string | null
-  note: string | null
-}
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 function parseCustomerText(raw: string) {
   const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean)
   let name = "", phone = "", lineId = "", address = ""
-  const notesLines: string[] = []
 
   for (const line of lines) {
-    // 電話：10碼數字
     const phoneMatch = line.match(/0\d{9}/)
     if (phoneMatch) {
       if (!phone) phone = phoneMatch[0]
       continue
     }
-    // LINE ID
     if (/LINE/i.test(line)) {
       lineId = line.replace(/LINE\s*(ID\s*)?[:：]?\s*/i, "").trim()
       continue
     }
-    // 地址
     if (/地址|縣|市|區|路|街|巷|弄|號/.test(line)) {
       address = line.replace(/地址\s*[:：]?\s*/, "").trim()
       continue
     }
-    // 姓名關鍵字
     if (/姓名/.test(line)) {
       name = line.replace(/姓名\s*[:：]?\s*/, "").trim()
-      continue
     }
-    notesLines.push(line)
   }
 
-  // 若還沒找到姓名，取第一個短行（2-6 字、無數字）
   if (!name) {
     const nameLine = lines.find((l) => l.length >= 2 && l.length <= 6 && !/\d/.test(l) && !/LINE/i.test(l))
-    if (nameLine) {
-      name = nameLine
-      const idx = notesLines.indexOf(nameLine)
-      if (idx !== -1) notesLines.splice(idx, 1)
-    }
+    if (nameLine) name = nameLine
   }
 
-  return { name, phone, lineId, address, notes: notesLines.join("\n").trim() }
+  return { name, phone, lineId, address }
 }
 
-// 從原始文字嘗試解析寵物欄位（回傳一筆，準確率有限）
-function parsePetFromText(raw: string): ScannedPet | null {
+function parsePetFromText(raw: string) {
   const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean)
-  let petName: string | null = null
-  let species: string | null = null
-  let breed: string | null = null
-  let chipNumber: string | null = null
-  let specialConditions: string | null = null
-  let allergies: string | null = null
-  const petNotes: string[] = []
+  let name = "", species = "犬", breed = ""
+  let foundPet = false
 
   for (const line of lines) {
     if (/名字|名稱|寵物名/.test(line)) {
-      petName = line.replace(/.*[:：]\s*/, "").trim() || null
+      name = line.replace(/.*[:：]\s*/, "").trim()
+      foundPet = true
       continue
     }
     if (/品種/.test(line)) {
-      breed = line.replace(/品種\s*[:：]?\s*/, "").trim() || null
+      breed = line.replace(/品種\s*[:：]?\s*/, "").trim()
+      foundPet = true
       continue
     }
-    if (/貓/.test(line)) { species = "貓"; continue }
-    if (/犬|狗/.test(line)) { species = "犬"; continue }
-    if (/晶片/.test(line)) {
-      const m = line.match(/\d{10,15}/)
-      chipNumber = m ? m[0] : line.replace(/晶片\s*號碼?\s*[:：]?\s*/, "").trim() || null
-      continue
-    }
-    if (/過敏/.test(line)) {
-      allergies = line.replace(/過敏\s*[:：]?\s*/, "").trim() || null
-      continue
-    }
-    if (/疾病|病史|病/.test(line)) {
-      specialConditions = line.replace(/疾病|病史\s*[:：]?\s*/, "").trim() || null
-      continue
-    }
-    petNotes.push(line)
+    if (/貓/.test(line)) { species = "貓"; foundPet = true; continue }
+    if (/犬|狗/.test(line)) { species = "犬"; foundPet = true; continue }
   }
 
-  if (!petName && !species && !breed) return null
-  return {
-    name: petName,
-    species,
-    breed,
-    gender: null,
-    birthday: null,
-    chipNumber,
-    specialConditions,
-    allergies,
-    note: petNotes.join("\n").trim() || null,
-  }
+  if (!foundPet) return null
+  return { name, species, breed }
 }
 
 export default function NewCustomerPage() {
@@ -128,15 +83,18 @@ export default function NewCustomerPage() {
     address: "",
     notes: "",
   })
+  const [petForm, setPetForm] = useState({
+    name: "",
+    species: "犬",
+    breed: "",
+  })
 
-  // Scan state
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [scanPreview, setScanPreview] = useState<string | null>(null)
   const [scanLoading, setScanLoading] = useState(false)
   const [scanProgress, setScanProgress] = useState(0)
   const [scanStatus, setScanStatus] = useState("")
   const [scanError, setScanError] = useState("")
-  const [scannedPets, setScannedPets] = useState<ScannedPet[]>([])
   const [scanDone, setScanDone] = useState(false)
 
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -146,7 +104,6 @@ export default function NewCustomerPage() {
     setScanDone(false)
     setScanProgress(0)
     setScanStatus("")
-    setScannedPets([])
     const reader = new FileReader()
     reader.onload = (ev) => {
       setScanPreview(ev.target?.result as string)
@@ -187,11 +144,17 @@ export default function NewCustomerPage() {
         phone: parsed.phone,
         lineId: parsed.lineId,
         address: parsed.address,
-        notes: parsed.notes,
+        notes: "",
       })
 
       const pet = parsePetFromText(text)
-      if (pet) setScannedPets([pet])
+      if (pet) {
+        setPetForm({
+          name: pet.name,
+          species: pet.species,
+          breed: pet.breed,
+        })
+      }
 
       setScanProgress(100)
       setScanDone(true)
@@ -208,7 +171,6 @@ export default function NewCustomerPage() {
     setScanError("")
     setScanProgress(0)
     setScanStatus("")
-    setScannedPets([])
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
@@ -227,6 +189,21 @@ export default function NewCustomerPage() {
         throw new Error(data.error || "建立失敗")
       }
       const customer = await res.json()
+
+      if (petForm.name.trim()) {
+        await fetch("/api/pets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: petForm.name.trim(),
+            species: petForm.species,
+            breed: petForm.breed.trim() || null,
+            gender: "UNKNOWN",
+            customerId: customer.id,
+          }),
+        })
+      }
+
       router.push(`/customers/${customer.id}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "建立失敗")
@@ -306,12 +283,7 @@ export default function NewCustomerPage() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2">
                     <CheckCircle className="h-4 w-4 flex-shrink-0" />
-                    <span>
-                      辨識完成，已自動填入資料。
-                      {scannedPets.length > 0 && (
-                        <> 另辨識到 <strong>{scannedPets.length}</strong> 隻寵物，建立客人後可前往新增。</>
-                      )}
-                    </span>
+                    辨識完成，已自動填入資料，請確認並補充寵物資料後再儲存。
                   </div>
                   <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
                     ⚠️ OCR 辨識準確率有限，請確認並修正辨識結果後再儲存。
@@ -343,7 +315,7 @@ export default function NewCustomerPage() {
           <CardTitle className="text-base">基本資料</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form id="new-customer-form" onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label htmlFor="name">姓名 *</Label>
@@ -397,22 +369,71 @@ export default function NewCustomerPage() {
                 rows={3}
               />
             </div>
-
-            {error && (
-              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
-            )}
-
-            <div className="flex gap-3 pt-2">
-              <Button type="submit" disabled={loading} className="flex-1">
-                {loading ? "建立中..." : "建立客人"}
-              </Button>
-              <Link href="/customers">
-                <Button type="button" variant="outline">取消</Button>
-              </Link>
-            </div>
           </form>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">同時新增寵物（選填）</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="petName">寵物名稱</Label>
+              <Input
+                id="petName"
+                placeholder="小白、咪咪..."
+                value={petForm.name}
+                onChange={(e) => setPetForm({ ...petForm, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>物種</Label>
+              <Select
+                value={petForm.species}
+                onValueChange={(v) => setPetForm({ ...petForm, species: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="犬">🐕 犬</SelectItem>
+                  <SelectItem value="貓">🐈 貓</SelectItem>
+                  <SelectItem value="其他">🐾 其他</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="petBreed">品種（選填）</Label>
+            <Input
+              id="petBreed"
+              placeholder="馬爾濟斯、柴犬..."
+              value={petForm.breed}
+              onChange={(e) => setPetForm({ ...petForm, breed: e.target.value })}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+      )}
+
+      <div className="flex gap-3">
+        <Button
+          type="submit"
+          form="new-customer-form"
+          disabled={loading}
+          className="flex-1"
+        >
+          {loading ? "建立中..." : "建立客人"}
+        </Button>
+        <Link href="/customers">
+          <Button type="button" variant="outline">取消</Button>
+        </Link>
+      </div>
     </div>
   )
 }
