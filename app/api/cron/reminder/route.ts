@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     where: {
       scheduledAt: { gte: start, lte: end },
       status: { in: ["CONFIRMED", "PENDING"] },
-      pet: { customer: { lineId: { not: null } } },
+      pet: { customer: { lineUserId: { not: null } } },
     },
     include: {
       pet: { include: { customer: true } },
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   for (const appt of appointments) {
     const customer = appt.pet.customer
-    if (!customer.lineId) continue
+    if (!customer.lineUserId) continue
 
     const twDate = new Intl.DateTimeFormat("zh-TW", {
       timeZone: "Asia/Taipei", month: "numeric", day: "numeric", weekday: "short",
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
       services,
     })
 
-    const ok = await sendLineMessage(customer.lineId, message, appt.shop.lineChannelToken)
+    const ok = await sendLineMessage(customer.lineUserId, message, appt.shop.lineChannelToken)
     if (ok) sent++; else failed++
   }
 

@@ -103,9 +103,11 @@ async function handlePhoneLinking(lineUserId: string, phone: string, replyToken?
   }
 
   // Update all matching customers with this LINE User ID
+  // lineUserId → used for push messages; lineId keeps the admin-entered display handle
+  console.log(`[LINE Webhook] 綁定 lineUserId=${lineUserId} phone=${phone} 共 ${customers.length} 筆`)
   await prisma.customer.updateMany({
     where: { phone, status: "ACTIVE" },
-    data: { lineId: lineUserId },
+    data: { lineUserId },
   })
 
   const shopNames = [...new Set(customers.map((c) => c.shop.name))].join("、")

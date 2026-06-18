@@ -93,9 +93,10 @@ export async function POST(req: NextRequest) {
     // Auto LINE notification on grooming completion
     const customer = await prisma.customer.findUnique({
       where: { id: pet.customerId },
-      select: { lineId: true, name: true },
+      select: { lineUserId: true, name: true },
     })
-    if (customer?.lineId) {
+    console.log(`[GROOMING] pet=${pet.name} customer.lineUserId=${customer?.lineUserId ?? "null"}`)
+    if (customer?.lineUserId) {
       const shop = await prisma.shop.findUnique({
         where: { id: shopId },
         select: { name: true, lineChannelToken: true },
@@ -108,7 +109,9 @@ export async function POST(req: NextRequest) {
         `📋 請點擊以下連結查看本次美容紀錄：`,
         viewUrl,
       ].join("\n")
-      void sendLineMessage(customer.lineId, msg, shop?.lineChannelToken ?? null)
+      console.log(`[GROOMING] 發送 LINE 推播 → ${customer.lineUserId}`)
+      const ok = await sendLineMessage(customer.lineUserId, msg, shop?.lineChannelToken ?? null)
+      console.log(`[GROOMING] LINE 推播結果: ${ok ? "成功 ✅" : "失敗 ❌"}`)
     }
 
     return NextResponse.json(record, { status: 201 })

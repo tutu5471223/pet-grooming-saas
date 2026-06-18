@@ -27,13 +27,13 @@ export async function GET(req: NextRequest) {
   const { start, end } = getTomorrowTaipeiRangeUTC()
   console.log(`[CRON] 發送預約提醒：${start.toISOString()} ~ ${end.toISOString()}`)
 
-  // Find all confirmed/pending appointments for tomorrow with customers who have lineId
+  // Find all confirmed/pending appointments for tomorrow with customers who have lineUserId
   const appointments = await prisma.appointment.findMany({
     where: {
       scheduledAt: { gte: start, lte: end },
       status: { in: ["CONFIRMED", "PENDING"] },
       pet: {
-        customer: { lineId: { not: null } },
+        customer: { lineUserId: { not: null } },
       },
     },
     include: {
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
 
   for (const appt of appointments) {
     const customer = appt.pet.customer
-    if (!customer.lineId) continue
+    if (!customer.lineUserId) continue
 
     const scheduledAt = appt.scheduledAt
     const twDate = new Intl.DateTimeFormat("zh-TW", {
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
       services,
     })
 
-    const ok = await sendLineMessage(customer.lineId, message, appt.shop.lineChannelToken)
+    const ok = await sendLineMessage(customer.lineUserId, message, appt.shop.lineChannelToken)
     if (ok) sent++
     else failed++
   }

@@ -50,42 +50,52 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     })
 
     // Auto LINE notification on first CONFIRMED
-    if (
-      body.status === "CONFIRMED" &&
-      existing.status !== "CONFIRMED" &&
-      updated?.pet.customer.lineId
-    ) {
-      const scheduledAt = updated.scheduledAt
-      const twTime = new Intl.DateTimeFormat("zh-TW", {
-        timeZone: "Asia/Taipei",
-        month: "numeric",
-        day: "numeric",
-        weekday: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(scheduledAt)
+    console.log(`[APPT] id=${id} body.status=${body.status ?? "none"} existing.status=${existing.status}`)
 
-      let svcLine = ""
-      try {
-        const svcs = JSON.parse(updated.services ?? "[]") as { name: string }[]
-        svcLine = svcs.map((s) => s.name).join("、")
-      } catch { /* ignore */ }
+    if (body.status === "CONFIRMED" && existing.status !== "CONFIRMED") {
+      const lineUserId = updated?.pet.customer.lineUserId ?? null
+      const legacyLineId = updated?.pet.customer.lineId ?? null
+      console.log(`[APPT] CONFIRMED: lineUserId=${lineUserId} lineId(display)=${legacyLineId}`)
 
-      const lines = [
-        `【${updated.shop.name}】您好，您的預約已確認！`,
-        `📅 時間：${twTime}`,
-        `🐾 寵物：${updated.pet.name}`,
-      ]
-      if (svcLine) lines.push(`✂️ 服務：${svcLine}`)
-      if (updated.shop.phone) lines.push(`📞 如需更改請來電：${updated.shop.phone}`)
-      else lines.push("如需更改請提前告知，謝謝！")
+      const targetUserId = lineUserId  // only send to bound LINE User ID
+      if (!targetUserId) {
+        console.log(`[APPT] 客人尚未綁定 LINE，略過推播 (lineId display-only: ${legacyLineId ?? "null"})`)
+      } else {
+        const isValidFormat = /^U[0-9a-fA-F]{32}$/.test(targetUserId)
+        if (!isValidFormat) {
+          console.warn(`[APPT] lineUserId "${targetUserId}" 格式不符 (應為 U + 32 hex)，嘗試推播但可能失敗`)
+        }
 
-      void sendLineMessage(
-        updated.pet.customer.lineId,
-        lines.join("\n"),
-        updated.shop.lineChannelToken
-      )
+        const scheduledAt = updated!.scheduledAt
+        const twTime = new Intl.DateTimeFormat("zh-TW", {
+          timeZone: "Asia/Taipei",
+          month: "numeric",
+          day: "numeric",
+          weekday: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }).format(scheduledAt)
+
+        let svcLine = ""
+        try {
+          const svcs = JSON.parse(updated!.services ?? "[]") as { name: string }[]
+          svcLine = svcs.map((s) => s.name).join("、")
+        } catch { /* ignore */ }
+
+        const lines = [
+          `【${updated!.shop.name}】您好，您的預約已確認！`,
+          `📅 時間：${twTime}`,
+          `🐾 寵物：${updated!.pet.name}`,
+        ]
+        if (svcLine) lines.push(`✂️ 服務：${svcLine}`)
+        if (updated!.shop.phone) lines.push(`📞 如需更改請來電：${updated!.shop.phone}`)
+        else lines.push("如需更改請提前告知，謝謝！")
+
+        console.log(`[APPT] 發送 LINE 推播 → ${targetUserId}`)
+        const ok = await sendLineMessage(targetUserId, lines.join("\n"), updated!.shop.lineChannelToken)
+        console.log(`[APPT] LINE 推播結果: ${ok ? "成功 ✅" : "失敗 ❌"}`)
+      }
     }
 
     return NextResponse.json(updated)

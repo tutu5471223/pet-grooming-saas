@@ -20,19 +20,19 @@ export async function POST(req: NextRequest) {
 
   let lineUserId = body.lineUserId ?? null
 
-  // Look up customer's lineId if customerId provided
+  // Look up customer's lineUserId if customerId provided
   if (!lineUserId && body.customerId) {
     const customer = await prisma.customer.findFirst({
       where: { id: body.customerId, shopId },
-      select: { lineId: true, name: true },
+      select: { lineUserId: true, name: true },
     })
     if (!customer) {
       return NextResponse.json({ error: "找不到客人" }, { status: 404 })
     }
-    if (!customer.lineId) {
-      return NextResponse.json({ error: `${customer.name} 尚未綁定 LINE 帳號` }, { status: 422 })
+    if (!customer.lineUserId) {
+      return NextResponse.json({ error: `${customer.name} 尚未綁定 LINE 帳號（請客人加好友後傳送手機號碼）` }, { status: 422 })
     }
-    lineUserId = customer.lineId
+    lineUserId = customer.lineUserId
   }
 
   if (!lineUserId) {
