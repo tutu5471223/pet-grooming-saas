@@ -5,6 +5,19 @@ import { PrismaClient } from "../app/generated/prisma/client"
 import bcrypt from "bcryptjs"
 
 const url = process.env.DATABASE_URL!
+
+// ⛔ 生產環境防護：seed 會清空所有業務資料，禁止在正式 DB 上執行
+// 必須設定 ALLOW_SEED=true 才能繞過此檢查（僅供開發/測試環境）
+const isRenderProd = url.includes("render.com") || url.includes(".internal")
+const allowSeed = process.env.ALLOW_SEED === "true"
+if (isRenderProd && !allowSeed) {
+  console.error("❌ 拒絕執行：偵測到 Render 正式資料庫 URL。")
+  console.error("   seed 會清空所有真實客人資料！")
+  console.error("   如確定要在此環境執行，請設定 ALLOW_SEED=true")
+  console.error("   例如：ALLOW_SEED=true npm run db:seed")
+  process.exit(1)
+}
+
 const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.startsWith("file:")
 const pool = new Pool({ connectionString: url, ssl: isLocal ? undefined : { rejectUnauthorized: false } })
 const adapter = new PrismaPg(pool)
@@ -14,6 +27,7 @@ const SHOP_ID = "Tutu123456"
 const SYSTEM_SHOP_ID = "system"
 
 async function clearShopData() {
+  if (isRenderProd) throw new Error("clearShopData: 正式 DB 不允許清除")
   await prisma.subscription.deleteMany({ where: { shopId: SHOP_ID } })
   await prisma.storedValueHistory.deleteMany({ where: { shopId: SHOP_ID } })
   await prisma.pointsHistory.deleteMany({ where: { shopId: SHOP_ID } })
