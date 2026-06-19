@@ -32,9 +32,6 @@ export async function GET(req: NextRequest) {
     where: {
       scheduledAt: { gte: start, lte: end },
       status: { in: ["CONFIRMED", "PENDING"] },
-      pet: {
-        customer: { lineUserId: { not: null } },
-      },
     },
     include: {
       pet: { include: { customer: true } },
