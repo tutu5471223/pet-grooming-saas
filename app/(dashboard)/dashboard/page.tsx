@@ -98,6 +98,7 @@ export default async function DashboardPage() {
       icon: Calendar,
       color: "text-blue-600",
       bg: "bg-blue-50",
+      href: `/appointments?date=${format(today, "yyyy-MM-dd")}&view=day`,
     },
     {
       title: "住宿中寵物",
@@ -106,6 +107,7 @@ export default async function DashboardPage() {
       icon: Home,
       color: "text-purple-600",
       bg: "bg-purple-50",
+      href: "/boarding",
     },
     {
       title: "本月收入",
@@ -114,6 +116,7 @@ export default async function DashboardPage() {
       icon: TrendingUp,
       color: "text-green-600",
       bg: "bg-green-50",
+      href: `/reports?month=${format(today, "yyyy-MM")}`,
     },
     {
       title: "今日銷售",
@@ -122,6 +125,7 @@ export default async function DashboardPage() {
       icon: ShoppingBag,
       color: "text-indigo-600",
       bg: "bg-indigo-50",
+      href: "/sales",
     },
     {
       title: "總客人數",
@@ -164,8 +168,8 @@ export default async function DashboardPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
-        {stats.map((stat) => (
-          <Card key={stat.title}>
+        {stats.map((stat) => {
+          const inner = (
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
@@ -184,8 +188,17 @@ export default async function DashboardPage() {
                 </div>
               </div>
             </CardContent>
-          </Card>
-        ))}
+          )
+          return stat.href ? (
+            <Link key={stat.title} href={stat.href}>
+              <Card className="cursor-pointer hover:shadow-md hover:border-gray-300 transition-all">
+                {inner}
+              </Card>
+            </Link>
+          ) : (
+            <Card key={stat.title}>{inner}</Card>
+          )
+        })}
       </div>
 
       {/* Main content */}
