@@ -395,6 +395,7 @@ export default async function PetDetailPage({
                               完工報告連結
                             </a>
                             <GroomingShareButton
+                              groomingRecordId={record.id}
                               viewToken={record.viewToken}
                               petName={pet.name}
                               baseUrl={baseUrl}
