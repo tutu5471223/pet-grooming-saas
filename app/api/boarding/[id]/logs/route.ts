@@ -32,9 +32,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id: boardingRecordId } = await params
   const shopId = session.user.shopId
-  const body = await req.json()
 
   try {
+    const body = await req.json()
+
     const record = await prisma.boardingRecord.findFirst({ where: { id: boardingRecordId, shopId } })
     if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
@@ -42,17 +43,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: {
         boardingRecordId,
         shopId,
-        date: body.date ? new Date(body.date) : new Date(),
+        date: new Date(),
         note: body.note || null,
         condition: body.condition || "良好",
-        createdBy: session.user.id,
+        createdBy: session.user.id || null,
       },
-      include: { staff: { select: { name: true } } },
     })
 
-    return NextResponse.json(log, { status: 201 })
+    const staff = session.user.id
+      ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } })
+      : null
+
+    return NextResponse.json({ ...log, staff }, { status: 201 })
   } catch (error) {
-    console.error("POST /api/boarding/[id]/logs", error)
+    console.error("POST /api/boarding/[id]/logs error:", error instanceof Error ? error.message : String(error))
     return NextResponse.json({ error: "操作失敗，請稍後再試" }, { status: 500 })
   }
 }
