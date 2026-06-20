@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     }).format(appt.scheduledAt)
 
     const twTime = new Intl.DateTimeFormat("zh-TW", {
-      timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false,
+      timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false, hourCycle: "h23",
     }).format(appt.scheduledAt)
 
     let services = "美容服務"

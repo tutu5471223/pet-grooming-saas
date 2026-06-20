@@ -68,6 +68,7 @@ export function formatTWDatetime(date: Date): string {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    hourCycle: "h23",
   }).formatToParts(date)
   const parts: Record<string, string> = {}
   d.forEach((p) => { parts[p.type] = p.value })
