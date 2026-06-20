@@ -20,7 +20,7 @@ async function replyMessage(replyToken: string, text: string) {
   await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/json; charset=utf-8",
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
