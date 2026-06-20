@@ -43,7 +43,7 @@ export default async function ReceivablesPage({
   const overdueCount = items.filter((i) => i.paidAt && differenceInDays(new Date(), new Date(i.paidAt)) > 30).length
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">應收帳款</h1>
         <p className="text-sm text-gray-500 mt-1">管理月結及待收款項目</p>

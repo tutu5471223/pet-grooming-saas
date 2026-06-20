@@ -98,6 +98,7 @@ export function BoardingWeekView({
 
   return (
     <>
+      <p className="text-xs text-gray-400 sm:hidden mb-1">← 左右滑動查看完整週視圖</p>
       <div className="overflow-x-auto rounded-xl border border-gray-200">
         <table className="w-full border-collapse text-xs">
           <thead>

@@ -103,7 +103,7 @@ export function ReceivablesClient({ items, status, isOwner }: Props) {
 
   return (
     <>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button onClick={() => setShowCreate(true)} disabled={!isOwner}>
           <Plus className="h-4 w-4 mr-1.5" /> 新增應收款
         </Button>

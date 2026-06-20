@@ -128,6 +128,7 @@ export function WeekCalendar({ appointments, weekStart, shopName, shopPhone }: P
         </div>
       )}
 
+      <p className="text-xs text-gray-400 sm:hidden">← 左右滑動查看完整週視圖</p>
       <div className="overflow-x-auto">
         <div className="min-w-[700px]">
           {/* Day headers */}

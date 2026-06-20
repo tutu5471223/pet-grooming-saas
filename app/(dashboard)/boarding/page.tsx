@@ -159,21 +159,21 @@ export default async function BoardingPage({
   const weekRooms = rooms.map((r) => ({ id: r.id, name: r.name, type: r.type ?? null }))
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">住宿管理</h1>
           <p className="text-sm text-gray-500 mt-1">
             {staying.length} 隻寵物住宿中・{rooms.filter((r) => r.status === "AVAILABLE").length} 間空房
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* View toggle */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
             <Link
               href="/boarding"
-              className={`flex items-center gap-1.5 px-3 py-1.5 transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-2 transition-colors ${
                 !isWeekView
                   ? "bg-indigo-600 text-white"
                   : "bg-white text-gray-600 hover:bg-gray-50"
@@ -184,7 +184,7 @@ export default async function BoardingPage({
             </Link>
             <Link
               href="/boarding?view=week"
-              className={`flex items-center gap-1.5 px-3 py-1.5 border-l border-gray-200 transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-2 border-l border-gray-200 transition-colors ${
                 isWeekView
                   ? "bg-indigo-600 text-white"
                   : "bg-white text-gray-600 hover:bg-gray-50"

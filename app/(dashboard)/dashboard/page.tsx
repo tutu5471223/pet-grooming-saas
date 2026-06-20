@@ -134,7 +134,7 @@ export default async function DashboardPage() {
   ]
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">儀表板</h1>
@@ -163,7 +163,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         {stats.map((stat) => (
           <Card key={stat.title}>
             <CardContent className="p-5">
@@ -189,7 +189,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Main content */}
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-5">
         {/* Revenue chart */}
         <Card className="lg:col-span-3">
           <CardHeader>

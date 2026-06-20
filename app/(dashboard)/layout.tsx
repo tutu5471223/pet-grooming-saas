@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { Sidebar } from "@/components/layout/sidebar"
+import { BottomTabBar } from "@/components/layout/bottom-tab-bar"
 
 export default async function DashboardLayout({
   children,
@@ -34,9 +35,10 @@ export default async function DashboardLayout({
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
-      <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-gray-50">
+      <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-gray-50 pb-16 sm:pb-0">
         {children}
       </main>
+      <BottomTabBar />
     </div>
   )
 }

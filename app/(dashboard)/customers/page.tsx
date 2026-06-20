@@ -76,14 +76,14 @@ export default async function CustomersPage({
   }))
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">客人管理</h1>
           <p className="text-sm text-gray-500 mt-1">共 {customers.length} 位客人</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <CustomerNotifyDialog customers={customersForDialog} memberLevels={memberLevels} />
           {isAdmin && (
             <CustomerMergeDialog
@@ -91,7 +91,7 @@ export default async function CustomersPage({
             />
           )}
           <Link href="/customers/new">
-            <Button>
+            <Button size="sm">
               <Plus className="h-4 w-4" />
               新增客人
             </Button>
