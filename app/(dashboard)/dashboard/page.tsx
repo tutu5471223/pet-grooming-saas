@@ -167,36 +167,34 @@ export default async function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5 items-stretch">
         {stats.map((stat) => {
           const inner = (
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">{stat.title}</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">
-                    {stat.value}
-                    {stat.unit && (
-                      <span className="text-base font-normal text-gray-500 ml-1">
-                        {stat.unit}
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <div className={`rounded-xl p-2.5 ${stat.bg}`}>
+            <CardContent className="p-5 h-full flex flex-col justify-between">
+              <p className="text-sm text-gray-500">{stat.title}</p>
+              <div className="flex items-end justify-between mt-2">
+                <p className="text-2xl font-bold text-gray-900 leading-none">
+                  {stat.value}
+                  {stat.unit && (
+                    <span className="text-base font-normal text-gray-500 ml-1">
+                      {stat.unit}
+                    </span>
+                  )}
+                </p>
+                <div className={`rounded-xl p-2.5 shrink-0 ${stat.bg}`}>
                   <stat.icon className={`h-5 w-5 ${stat.color}`} />
                 </div>
               </div>
             </CardContent>
           )
           return stat.href ? (
-            <Link key={stat.title} href={stat.href}>
-              <Card className="cursor-pointer hover:shadow-md hover:border-gray-300 transition-all">
+            <Link key={stat.title} href={stat.href} className="block h-full">
+              <Card className="h-full cursor-pointer hover:shadow-md hover:border-gray-300 transition-all">
                 {inner}
               </Card>
             </Link>
           ) : (
-            <Card key={stat.title}>{inner}</Card>
+            <Card key={stat.title} className="h-full">{inner}</Card>
           )
         })}
       </div>
