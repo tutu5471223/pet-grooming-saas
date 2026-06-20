@@ -39,6 +39,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const record = await prisma.boardingRecord.findFirst({ where: { id: boardingRecordId, shopId } })
     if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
+    // 先驗證 session user 是否存在於 DB（避免 JWT 過期/重建後 FK 違反）
+    const staff = session.user.id
+      ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } })
+      : null
+
     const log = await prisma.boardingDailyLog.create({
       data: {
         boardingRecordId,
@@ -46,13 +51,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         date: new Date(),
         note: body.note || null,
         condition: body.condition || "良好",
-        createdBy: session.user.id || null,
+        createdBy: staff ? session.user.id : null,
       },
     })
-
-    const staff = session.user.id
-      ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } })
-      : null
 
     return NextResponse.json({ ...log, staff }, { status: 201 })
   } catch (error) {
