@@ -11,13 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ClipboardList, Plus } from "lucide-react"
 
@@ -61,6 +54,7 @@ export function BoardingDetailSheet({
   const [logsLoading, setLogsLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState("")
   const [form, setForm] = useState({ condition: "良好", note: "" })
 
   const days = Math.max(1, differenceInDays(new Date(), new Date(checkIn)))
@@ -83,6 +77,7 @@ export function BoardingDetailSheet({
   async function handleAddLog(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
+    setSubmitError("")
     try {
       const res = await fetch(`/api/boarding/${recordId}/logs`, {
         method: "POST",
@@ -94,7 +89,12 @@ export function BoardingDetailSheet({
         setLogs([newLog, ...logs])
         setShowForm(false)
         setForm({ condition: "良好", note: "" })
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setSubmitError(data.error ?? `儲存失敗（${res.status}）`)
       }
+    } catch {
+      setSubmitError("網路錯誤，請重試")
     } finally {
       setSubmitting(false)
     }
@@ -161,32 +161,36 @@ export function BoardingDetailSheet({
             {showForm && (
               <form onSubmit={handleAddLog} className="mb-4 rounded-xl border border-gray-200 p-4 space-y-3 bg-gray-50">
                 <div className="space-y-1.5">
-                  <Label>狀況</Label>
-                  <Select value={form.condition} onValueChange={(v) => setForm({ ...form, condition: v })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {["良好", "注意", "異常"].map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="condition">狀況</Label>
+                  <select
+                    id="condition"
+                    value={form.condition}
+                    onChange={(e) => setForm({ ...form, condition: e.target.value })}
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {["良好", "注意", "異常"].map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>備註</Label>
+                  <Label htmlFor="note">備註</Label>
                   <Textarea
+                    id="note"
                     placeholder="今日觀察、飲食、行為等..."
                     value={form.note}
                     onChange={(e) => setForm({ ...form, note: e.target.value })}
                     rows={3}
                   />
                 </div>
+                {submitError && (
+                  <p className="text-sm text-red-600">{submitError}</p>
+                )}
                 <div className="flex gap-2">
                   <Button type="submit" size="sm" disabled={submitting} className="flex-1">
                     {submitting ? "儲存中..." : "儲存記錄"}
                   </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setShowForm(false)}>
+                  <Button type="button" size="sm" variant="outline" onClick={() => { setShowForm(false); setSubmitError("") }}>
                     取消
                   </Button>
                 </div>
