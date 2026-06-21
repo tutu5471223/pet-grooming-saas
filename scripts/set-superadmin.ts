@@ -10,11 +10,25 @@ const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter } as any)
 
 async function main() {
-  const first = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } })
-  if (!first) { console.log("No users found"); return }
+  // SEC-2: never blindly promote "the first user". Require an explicit email
+  // (and optional shopId) so granting platform-superadmin is always deliberate.
+  const email = process.argv[2]
+  const shopId = process.argv[3]
+  if (!email) {
+    console.error("用法: tsx scripts/set-superadmin.ts <email> [shopId]")
+    process.exit(1)
+  }
 
-  await prisma.user.update({ where: { id: first.id }, data: { isSuperAdmin: true } })
-  console.log(`✅ Set isSuperAdmin=true for: ${first.name} (${first.email}) @ shop ${first.shopId}`)
+  const user = await prisma.user.findFirst({
+    where: { email, ...(shopId ? { shopId } : {}) },
+  })
+  if (!user) {
+    console.error(`找不到使用者: ${email}${shopId ? ` @ ${shopId}` : ""}`)
+    process.exit(1)
+  }
+
+  await prisma.user.update({ where: { id: user.id }, data: { isSuperAdmin: true } })
+  console.log(`✅ Set isSuperAdmin=true for: ${user.name} (${user.email}) @ shop ${user.shopId}`)
 }
 
 main().catch(console.error).finally(() => process.exit(0))
