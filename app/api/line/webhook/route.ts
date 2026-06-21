@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
-import { verifyLineSignature, sendLineMessage } from "@/lib/line"
+import { verifyLineSignature } from "@/lib/line"
 
 interface LineEvent {
   type: string
@@ -54,122 +53,39 @@ export async function POST(req: NextRequest) {
 
 async function processEvents(events: LineEvent[]) {
   for (const event of events) {
-    const lineUserId = event.source?.userId
-    if (!lineUserId) continue
+    // We intentionally do not read or persist the inbound LINE userId here
+    // (AUTH-3): no cross-shop binding or PII disclosure from the webhook.
+    if (!event.source?.userId) continue
 
     if (event.type === "follow") {
-      // Welcome message when user follows the official account
+      // Welcome message when user follows the official account.
+      // AUTH-3: do NOT instruct the user to send a phone number for auto-binding —
+      // binding must be done by the shop (explicit verification), not by anyone
+      // who happens to know a phone number.
       if (event.replyToken) {
         await replyMessage(
           event.replyToken,
-          "您好！感謝關注我們的 LINE 官方帳號 🐾\n\n請傳送您在本店登記的手機號碼（格式：09xxxxxxxx），即可連結您的帳號，之後將自動收到預約確認、美容完工等通知。"
+          "您好！感謝關注我們的 LINE 官方帳號 🐾\n\n如需綁定帳號以接收預約確認、美容完工等通知，請直接洽詢您的店家協助完成綁定。"
         )
       }
       continue
     }
 
     if (event.type === "message" && event.message?.type === "text") {
-      const text = event.message.text?.trim() ?? ""
-
-      // Phone number sent → link to customer account
-      if (/^09\d{8}$/.test(text)) {
-        await handlePhoneLinking(lineUserId, text, event.replyToken)
-        continue
-      }
-
-      // Member query keywords
-      if (/查詢|會員|我的資料|點數|儲值/.test(text)) {
-        await handleMemberQuery(lineUserId, event.replyToken)
-        continue
-      }
-
-      // Any other message → generic reply
+      // AUTH-3: this is a single global LINE channel shared across all tenants.
+      // We can no longer determine which shop an inbound user belongs to in a
+      // trustworthy way, and we must never disclose balances/points/names or
+      // auto-bind a LINE userId to a customer by an unverified phone number
+      // (that would leak/cross-link PII across shops). Until a proper per-shop
+      // one-time binding-code flow exists, reply with a safe, generic message
+      // only — no lookups, no PII, no writes.
       if (event.replyToken) {
         await replyMessage(
           event.replyToken,
-          "您好！如需連結帳號，請傳送您登記的手機號碼（格式：09xxxxxxxx）。\n如需查詢會員資料，請傳送「查詢」。"
+          "您好！如需綁定帳號或查詢會員資料，請直接洽詢您的店家協助，謝謝 🐾"
         )
       }
     }
-  }
-}
-
-async function handlePhoneLinking(lineUserId: string, phone: string, replyToken?: string) {
-  // Find customer by phone across all shops
-  const customers = await prisma.customer.findMany({
-    where: { phone, status: "ACTIVE" },
-    include: { shop: { select: { name: true } } },
-  })
-
-  if (customers.length === 0) {
-    if (replyToken) {
-      await replyMessage(replyToken, `找不到手機號碼 ${phone} 對應的客人資料，請確認號碼是否正確，或洽詢店家協助。`)
-    }
-    return
-  }
-
-  // Update all matching customers with this LINE User ID
-  // lineUserId → used for push messages; lineId keeps the admin-entered display handle
-  console.log(`[LINE Webhook] 綁定 lineUserId=${lineUserId} phone=${phone} 共 ${customers.length} 筆`)
-  await prisma.customer.updateMany({
-    where: { phone, status: "ACTIVE" },
-    data: { lineUserId },
-  })
-
-  const shopNames = [...new Set(customers.map((c) => c.shop.name))].join("、")
-  if (replyToken) {
-    await replyMessage(
-      replyToken,
-      `帳號連結成功！✅\n您的 LINE 已與「${shopNames}」的客戶資料完成綁定。\n之後預約確認、美容完工通知將自動傳送給您。`
-    )
-  }
-}
-
-async function handleMemberQuery(lineUserId: string, replyToken?: string) {
-  const customers = await prisma.customer.findMany({
-    where: { lineUserId, status: "ACTIVE" },
-    include: {
-      shop: { select: { name: true } },
-      pets: {
-        where: { isActive: true },
-        include: {
-          petMonthlyPlans: {
-            where: { endDate: { gte: new Date() } },
-            select: { maxSessions: true, usedSessions: true },
-          },
-        },
-      },
-    },
-  })
-
-  if (customers.length === 0) {
-    if (replyToken) {
-      await replyMessage(
-        replyToken,
-        "找不到您的會員資料。\n請先傳送您的手機號碼（09xxxxxxxx）完成帳號連結。"
-      )
-    }
-    return
-  }
-
-  const parts: string[] = []
-  for (const customer of customers) {
-    const remaining = customer.pets.reduce((sum, pet) =>
-      sum + pet.petMonthlyPlans.reduce((s, p) => s + Math.max(0, p.maxSessions - p.usedSessions), 0), 0)
-
-    parts.push(
-      `【${customer.shop.name}】您的會員資料`,
-      `👤 姓名：${customer.name}`,
-      `💰 儲值餘額：$${Math.round(customer.storedValue).toLocaleString()}`,
-      `⭐ 點數：${customer.points} 點`,
-      `📅 包月剩餘：${remaining} 次`,
-      `如有疑問請聯絡店家`,
-    )
-    if (customers.length > 1) parts.push("")
-  }
-
-  if (replyToken) {
-    await replyMessage(replyToken, parts.join("\n").trim())
   }
 }
 

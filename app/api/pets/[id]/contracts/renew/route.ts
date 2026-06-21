@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAuth } from "@/lib/auth-guard"
+import { sanitizeContractHtml } from "@/lib/sanitize"
 import { nanoid } from "nanoid"
 
 export async function POST(
@@ -30,7 +31,8 @@ export async function POST(
       data: {
         status: "PENDING",
         token: nanoid(21),
-        content: shop?.contractTemplate ?? pet.contract.content,
+        // Sanitize shop-authored HTML before storing (defense vs stored XSS).
+        content: sanitizeContractHtml(shop?.contractTemplate ?? pet.contract.content),
         signedAt: null,
         signerName: null,
         signatureUrl: null,

@@ -1,15 +1,16 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
+import { readJson, money, shortText, longText, z } from "@/lib/validation"
+import { round2 } from "@/lib/money"
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
-  const shopId = session.user.shopId
-  const { searchParams } = new URL(req.url)
-  const status = searchParams.get("status")
+  const status = new URL(req.url).searchParams.get("status")?.slice(0, 50) || null
 
   try {
     const records = await prisma.boardingRecord.findMany({
@@ -28,14 +29,42 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+const createSchema = z.object({
+  petId: z.string().min(1),
+  roomId: z.string().min(1).nullish(),
+  checkIn: z.string().min(1),
+  checkOut: z.string().min(1).nullish(),
+  dailyRate: money,
+  notes: longText.nullish(),
+  priceAdjustment: z.number().finite().min(-1_000_000).max(1_000_000).nullish(),
+  priceAdjustmentNote: shortText.nullish(),
+  addOnServices: z
+    .array(z.object({ name: shortText.optional(), price: money }).passthrough())
+    .nullish(),
+})
 
-  const shopId = session.user.shopId
-  const body = await req.json()
+export async function POST(req: NextRequest) {
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   try {
+    const parsed = await readJson(req, createSchema)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
+
+    const checkInDate = new Date(body.checkIn)
+    if (isNaN(checkInDate.getTime())) {
+      return NextResponse.json({ error: "checkIn 日期格式錯誤" }, { status: 400 })
+    }
+    let checkOutDate: Date | null = null
+    if (body.checkOut) {
+      checkOutDate = new Date(body.checkOut)
+      if (isNaN(checkOutDate.getTime())) {
+        return NextResponse.json({ error: "checkOut 日期格式錯誤" }, { status: 400 })
+      }
+    }
+
     // SECURITY: Verify pet belongs to this shop.
     const pet = await prisma.pet.findFirst({
       where: { id: body.petId, shopId, isActive: true },
@@ -55,14 +84,18 @@ export async function POST(req: NextRequest) {
         petId: body.petId,
         shopId,
         roomId: body.roomId || null,
-        checkIn: new Date(body.checkIn),
-        checkOut: body.checkOut ? new Date(body.checkOut) : null,
-        dailyRate: body.dailyRate,
+        checkIn: checkInDate,
+        checkOut: checkOutDate,
+        dailyRate: round2(body.dailyRate),
         notes: body.notes || null,
         status: "STAYING",
-        priceAdjustment: body.priceAdjustment ?? null,
+        priceAdjustment: body.priceAdjustment != null ? round2(body.priceAdjustment) : null,
         priceAdjustmentNote: body.priceAdjustmentNote || null,
-        addOnServices: body.addOnServices ? JSON.stringify(body.addOnServices) : null,
+        addOnServices: body.addOnServices
+          ? JSON.stringify(
+              body.addOnServices.map((a) => ({ ...a, price: round2(a.price) }))
+            )
+          : null,
       },
     })
 

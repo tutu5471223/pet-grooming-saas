@@ -3,6 +3,16 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { checkCustomerLimit } from "@/lib/subscription-guard"
+import { readJson, z, shortText, phone } from "@/lib/validation"
+
+// Non-strict: validate the known fields we read, allow extra keys from the UI.
+const createCustomerSchema = z.object({
+  name: shortText.min(1),
+  phone: phone,
+  lineId: z.string().trim().max(100).optional().nullable(),
+  address: shortText.optional().nullable(),
+  notes: z.string().trim().max(2000).optional().nullable(),
+})
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -48,7 +58,10 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const shopId = session.user.shopId
-  const body = await req.json()
+
+  const parsed = await readJson(req, createCustomerSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
 
   try {
     const limitCheck = await checkCustomerLimit(shopId)

@@ -4,6 +4,24 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { startOfDay, endOfDay, addMinutes } from "date-fns"
 import { writeAudit } from "@/lib/audit"
+import { readJson, z, money } from "@/lib/validation"
+
+// Non-strict: validate known fields' types/bounds; tolerate extra keys.
+const createSchema = z.object({
+  petId: z.string().min(1),
+  staffId: z.string().min(1).optional().nullable(),
+  type: z.string().max(50).optional(),
+  scheduledAt: z.string().min(1),
+  duration: z.number().int().positive().max(24 * 60).optional().nullable(),
+  status: z.string().max(50).optional(),
+  services: z.any().optional(),
+  estimatedCost: money.optional().nullable(),
+  notes: z.string().max(5000).optional().nullable(),
+  source: z.string().max(50).optional(),
+  boardingCheckOut: z.string().optional().nullable(),
+  boardingRoomId: z.string().min(1).optional().nullable(),
+  petMonthlyPlanId: z.string().min(1).optional().nullable(),
+})
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -48,11 +66,47 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const shopId = session.user.shopId
-  const body = await req.json()
+
+  const parsed = await readJson(req, createSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
 
   try {
     const scheduledAt = new Date(body.scheduledAt)
+    if (isNaN(scheduledAt.getTime())) {
+      return NextResponse.json({ error: "預約時間格式錯誤" }, { status: 400 })
+    }
     const duration = body.duration || 60
+
+    // TEN-2: verify the pet belongs to this shop (blocks cross-tenant pet injection + PII read-back)
+    const pet = await prisma.pet.findFirst({
+      where: { id: body.petId, shopId, isActive: true },
+      select: { id: true },
+    })
+    if (!pet) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    // TEN-3: verify any client-supplied foreign ids belong to this shop before persisting.
+    if (body.staffId) {
+      const staff = await prisma.user.findFirst({
+        where: { id: body.staffId, shopId },
+        select: { id: true },
+      })
+      if (!staff) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+    if (body.boardingRoomId) {
+      const boardingRoom = await prisma.boardingRoom.findFirst({
+        where: { id: body.boardingRoomId, shopId },
+        select: { id: true },
+      })
+      if (!boardingRoom) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+    if (body.petMonthlyPlanId) {
+      const plan = await prisma.petMonthlyPlan.findFirst({
+        where: { id: body.petMonthlyPlanId, shopId },
+        select: { id: true },
+      })
+      if (!plan) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
 
     if (body.staffId) {
       const apptEnd = addMinutes(scheduledAt, duration)

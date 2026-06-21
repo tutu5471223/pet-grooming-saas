@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
 
 export async function POST() {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   try {
+    // shopId derived from session; body is ignored entirely (no mass-assignment).
     await prisma.shop.update({
-      where: { id: session.user.shopId },
+      where: { id: shopId },
       data: { onboardingDone: true },
     })
     return NextResponse.json({ ok: true })

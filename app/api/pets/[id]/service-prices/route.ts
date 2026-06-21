@@ -1,6 +1,15 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
+import { readJson, z } from "@/lib/validation"
+import { parseMoney } from "@/lib/money"
+
+const servicePricesSchema = z.array(
+  z.object({
+    serviceId: z.string().min(1),
+    price: z.number().finite().nullable(),
+  })
+)
 
 export async function GET(
   _req: NextRequest,
@@ -39,14 +48,26 @@ export async function PUT(
     const pet = await prisma.pet.findFirst({ where: { id: petId, shopId } })
     if (!pet) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const body = (await req.json()) as { serviceId: string; price: number | null }[]
-    const toSave = body.filter((r) => r.price !== null && r.price !== undefined && r.price >= 0)
+    const parsed = await readJson(req, servicePricesSchema)
+    if (!parsed.ok) return parsed.response
+
+    // Validate + normalise each money value server-side (finite/>=0/cap, round2).
+    // A null price means "no custom price" → skip it.
+    const toSave: { serviceId: string; price: number }[] = []
+    for (const r of parsed.data) {
+      if (r.price === null) continue
+      const price = parseMoney(r.price, { allowZero: true })
+      if (price === null) {
+        return NextResponse.json({ error: "價格無效" }, { status: 400 })
+      }
+      toSave.push({ serviceId: r.serviceId, price })
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.petServicePrice.deleteMany({ where: { petId, shopId } })
       if (toSave.length > 0) {
         await tx.petServicePrice.createMany({
-          data: toSave.map(({ serviceId, price }) => ({ shopId, petId, serviceId, price: price as number })),
+          data: toSave.map(({ serviceId, price }) => ({ shopId, petId, serviceId, price })),
         })
       }
     })

@@ -2,6 +2,29 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
 import bcrypt from "bcryptjs"
+import { enforceRateLimit, clientIp } from "@/lib/rate-limit"
+import { readJson, z, shortText, email as emailSchema } from "@/lib/validation"
+
+const registerSchema = z.object({
+  shopName: shortText.min(1),
+  ownerName: shortText.min(1),
+  phone: z.string().trim().min(1).max(30),
+  email: emailSchema,
+  password: z.string().min(8).max(200),
+  city: shortText.optional(),
+  address: shortText.optional(),
+  terms: z.boolean().optional(),
+})
+
+// Escape user-supplied values before interpolating into notification HTML.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
 
 const DEFAULT_CONTRACT_TEMPLATE = `本寵物美容定型化契約（以下稱本契約）由本店與飼主共同簽訂，雙方同意遵守以下條款：
 
@@ -31,17 +54,15 @@ function generateShopId(): string {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
-  const { shopName, ownerName, phone, email, password, city, address, terms } = body
+  const limited = enforceRateLimit(`register:${clientIp(req)}`, 5, 60_000)
+  if (limited) return limited
 
-  if (!shopName || !ownerName || !phone || !email || !password) {
-    return NextResponse.json({ error: "請填寫所有必填欄位" }, { status: 400 })
-  }
+  const parsed = await readJson(req, registerSchema)
+  if (!parsed.ok) return parsed.response
+  const { shopName, ownerName, phone, email, password, city, address, terms } = parsed.data
+
   if (!terms) {
     return NextResponse.json({ error: "請同意服務條款" }, { status: 400 })
-  }
-  if (password.length < 8) {
-    return NextResponse.json({ error: "密碼至少需要 8 個字元" }, { status: 400 })
   }
 
   try {
@@ -124,12 +145,12 @@ export async function POST(req: NextRequest) {
           html: `
             <p>有新店家申請註冊，請前往超級管理後台審核。</p>
             <ul>
-              <li>店名：${shopName}</li>
-              <li>負責人：${ownerName}</li>
-              <li>手機：${phone}</li>
-              <li>Email：${email}</li>
-              <li>縣市：${city || "未填寫"}</li>
-              <li>店家 ID：${shopId}</li>
+              <li>店名：${escapeHtml(shopName)}</li>
+              <li>負責人：${escapeHtml(ownerName)}</li>
+              <li>手機：${escapeHtml(phone)}</li>
+              <li>Email：${escapeHtml(email)}</li>
+              <li>縣市：${escapeHtml(city || "未填寫")}</li>
+              <li>店家 ID：${escapeHtml(shopId)}</li>
             </ul>
           `,
         })

@@ -5,6 +5,8 @@ import { requireRole } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { checkStaffLimit } from "@/lib/subscription-guard"
+import { writeAudit } from "@/lib/audit"
+import { readJson, shortText, email as emailSchema, z } from "@/lib/validation"
 
 export async function GET() {
   const session = await auth()
@@ -23,19 +25,35 @@ export async function GET() {
   }
 }
 
+// AUTH-7: validate role against an explicit allowlist and DISALLOW creating/
+// elevating to OWNER via the staff endpoint. Reject unknown role strings.
+const staffCreateSchema = z.object({
+  name: shortText.min(1, "請填寫員工姓名"),
+  // Only STAFF may be created here; OWNER elevation via this endpoint is forbidden.
+  role: z.enum(["STAFF"]).optional(),
+  email: emailSchema.optional().nullable(),
+  password: z.string().min(1).max(200).optional().nullable(),
+})
+
 export async function POST(req: NextRequest) {
+  // Staff CRUD => OWNER only.
   const guard = await requireRole(["OWNER"])
   if (!guard.ok) return guard.response
 
-  const { shopId } = guard.ctx
+  const { shopId, userId } = guard.ctx
+
+  const parsed = await readJson(req, staffCreateSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
 
   try {
-    const body = await req.json()
-    const { name, role } = body
+    const name = body.name.trim()
     const email = body.email?.trim() || null
     const password = body.password?.trim() || null
+    // Force role to STAFF — never allow OWNER elevation via this endpoint.
+    const role = "STAFF"
 
-    if (!name?.trim()) {
+    if (!name) {
       return NextResponse.json({ error: "請填寫員工姓名" }, { status: 400 })
     }
 
@@ -70,13 +88,22 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.create({
       data: {
-        name: name.trim(),
-        role: role || "STAFF",
+        name,
+        role,
         shopId,
         ...(email ? { email } : {}),
         ...(hashedPassword ? { password: hashedPassword } : {}),
       },
       select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+    })
+
+    await writeAudit({
+      shopId,
+      userId,
+      action: "staff.create",
+      resource: "user",
+      resourceId: user.id,
+      detail: { name, role, hasLogin: !!email },
     })
 
     return NextResponse.json(user, { status: 201 })

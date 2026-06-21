@@ -1,15 +1,13 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-04)
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireRole } from "@/lib/auth-guard"
 import { writeAudit } from "@/lib/audit"
 
 export async function POST() {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (session.user.role !== "OWNER") return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-
-  const shopId = session.user.shopId
+  const guard = await requireRole(["OWNER"])
+  if (!guard.ok) return guard.response
+  const { shopId, userId } = guard.ctx
 
   try {
     const [levels, customers] = await Promise.all([
@@ -41,7 +39,7 @@ export async function POST() {
 
     await writeAudit({
       shopId,
-      userId: session.user.id,
+      userId,
       action: "SYNC_MEMBER_TIERS",
       resource: "MemberLevel",
       detail: { upgraded, downgraded, total: customers.length },

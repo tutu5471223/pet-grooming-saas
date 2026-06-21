@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { enforceRateLimit, clientIp } from "@/lib/rate-limit"
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ shopId: string }> }
 ) {
   const { shopId } = await params
+
+  const limited =
+    enforceRateLimit(`booking-info:${clientIp(req)}`, 60, 60_000) ??
+    enforceRateLimit(`booking-info:shop:${shopId}`, 300, 60_000)
+  if (limited) return limited
 
   try {
     const shop = await prisma.shop.findUnique({

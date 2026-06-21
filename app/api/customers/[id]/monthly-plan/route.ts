@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
+import { readJson, z } from "@/lib/validation"
+
+const assignPlanSchema = z.object({
+  planId: z.string().trim().min(1),
+  startDate: z.string().trim().min(1),
+})
 
 export async function POST(
   req: NextRequest,
@@ -11,9 +17,13 @@ export async function POST(
   const { shopId } = guard.ctx
   const { id: customerId } = await params
 
-  const { planId, startDate } = await req.json()
-  if (!planId || !startDate)
-    return NextResponse.json({ error: "請提供方案與開始日期" }, { status: 400 })
+  const parsed = await readJson(req, assignPlanSchema)
+  if (!parsed.ok) return parsed.response
+  const { planId, startDate } = parsed.data
+
+  const parsedDate = new Date(startDate)
+  if (Number.isNaN(parsedDate.getTime()))
+    return NextResponse.json({ error: "開始日期格式錯誤" }, { status: 400 })
 
   try {
     const [plan, customer] = await Promise.all([
@@ -27,7 +37,7 @@ export async function POST(
       where: { id: customerId },
       data: {
         monthlyPlanId: planId,
-        monthlyPlanStartDate: new Date(startDate),
+        monthlyPlanStartDate: parsedDate,
       },
     })
     return NextResponse.json(updated)

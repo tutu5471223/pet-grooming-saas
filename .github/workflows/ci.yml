@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install (exact lockfile)
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # Type safety is a blocking gate (ignoreBuildErrors was removed from next.config).
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Lint runs but does not block yet — pre-existing lint debt is being burned
+      # down separately. Remove continue-on-error once the backlog is clear.
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Tests
+        run: npm test

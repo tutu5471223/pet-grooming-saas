@@ -9,6 +9,7 @@ declare module "next-auth" {
       role: string
       shopId: string
       shopName: string
+      shopStatus?: string
       isSuperAdmin: boolean
     }
   }
@@ -16,6 +17,18 @@ declare module "next-auth" {
     role: string
     shopId: string
     shopName: string
+    shopStatus?: string
+    isSuperAdmin?: boolean
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    id?: string
+    role?: string
+    shopId?: string
+    shopName?: string
+    shopStatus?: string
     isSuperAdmin?: boolean
   }
 }

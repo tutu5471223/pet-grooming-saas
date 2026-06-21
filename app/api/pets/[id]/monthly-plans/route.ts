@@ -2,6 +2,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { readJson, z, shortText } from "@/lib/validation"
+import { parseMoney, round2 } from "@/lib/money"
+
+const createPlanSchema = z.object({
+  name: shortText.min(1),
+  maxSessions: z.number().finite(),
+  pricePerSession: z.number().finite(),
+  startDate: z.string().min(1),
+  endDate: z.string().min(1),
+  notes: shortText.nullish(),
+})
 
 export async function GET(
   req: NextRequest,
@@ -52,10 +63,18 @@ export async function POST(
     const pet = await prisma.pet.findFirst({ where: { id: petId, shopId } })
     if (!pet) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const body = await req.json()
-    const maxSessions = Number(body.maxSessions)
-    const pricePerSession = Number(body.pricePerSession)
-    if (!body.name || !body.startDate || !body.endDate || !maxSessions || pricePerSession < 0 || maxSessions < 1) {
+    const parsed = await readJson(req, createPlanSchema)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
+
+    const maxSessions = Math.trunc(body.maxSessions)
+    const pricePerSession = parseMoney(body.pricePerSession, { allowZero: true })
+    if (pricePerSession === null || maxSessions < 1) {
+      return NextResponse.json({ error: "缺少必填欄位或資料無效" }, { status: 400 })
+    }
+    const startDate = new Date(body.startDate)
+    const endDate = new Date(body.endDate)
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return NextResponse.json({ error: "缺少必填欄位或資料無效" }, { status: 400 })
     }
 
@@ -67,13 +86,13 @@ export async function POST(
           name: body.name,
           maxSessions,
           pricePerSession,
-          startDate: new Date(body.startDate),
-          endDate: new Date(body.endDate),
+          startDate,
+          endDate,
           notes: body.notes || null,
         },
       })
 
-      const totalAmount = maxSessions * pricePerSession
+      const totalAmount = round2(maxSessions * pricePerSession)
       if (totalAmount > 0) {
         await tx.payment.create({
           data: {

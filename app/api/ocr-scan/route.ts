@@ -1,29 +1,89 @@
 // DEPRECATED: 前端已改用 Tesseract.js 在瀏覽器端執行 OCR，此路由保留供未來參考
 // SECURITY: 已通過多店家隔離稽核 (2026-05-05)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-guard"
+import { enforceRateLimit } from "@/lib/rate-limit"
+import { z } from "zod"
 import Anthropic from "@anthropic-ai/sdk"
 
 const client = new Anthropic()
 
+// OCR is a paid Anthropic call — bound per-user and per-shop to control cost/DoS.
+const PER_USER_PER_MIN = 20
+const PER_SHOP_PER_DAY = 500
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// ~8MB raw image -> base64 inflates ~1.37x.
+const MAX_BASE64 = Math.ceil(8 * 1024 * 1024 * 1.37)
+
+const ALLOWED_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const
+type AllowedMime = (typeof ALLOWED_MIME)[number]
+
+// Strict schema for the (untrusted) OCR suggestion. Known keys only; bounded
+// strings; enums for species/gender. This is a SUGGESTION returned to the
+// client to pre-fill a form — never auto-persisted to the DB.
+const nullableShort = z.string().max(200).nullable()
+const ocrResultSchema = z
+  .object({
+    customer: z
+      .object({
+        name: nullableShort,
+        phone: z.string().max(40).nullable(),
+        lineId: z.string().max(100).nullable(),
+        address: z.string().max(300).nullable(),
+        note: z.string().max(1000).nullable(),
+      })
+      .partial(),
+    pets: z
+      .array(
+        z
+          .object({
+            name: nullableShort,
+            species: z.enum(["犬", "貓", "兔", "鳥", "其他"]).nullable(),
+            breed: nullableShort,
+            gender: z.enum(["MALE", "FEMALE", "UNKNOWN"]).nullable(),
+            birthday: z.string().max(20).nullable(),
+            chipNumber: z.string().max(60).nullable(),
+            specialConditions: z.string().max(1000).nullable(),
+            allergies: z.string().max(1000).nullable(),
+            note: z.string().max(1000).nullable(),
+          })
+          .partial()
+      )
+      .max(20),
+  })
+  .partial()
+
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { userId, shopId } = guard.ctx
+
+  const perUser = enforceRateLimit(`ocr-scan:user:${userId}`, PER_USER_PER_MIN, 60_000)
+  if (perUser) return perUser
+  const perShop = enforceRateLimit(`ocr-scan:shop:day:${shopId}`, PER_SHOP_PER_DAY, DAY_MS)
+  if (perShop) return perShop
 
   let image: string, mimeType: string | undefined
   try {
-    const body = await req.json() as { image: string; mimeType?: string }
+    const body = await req.json() as { image?: unknown; mimeType?: unknown }
+    if (typeof body.image !== "string") {
+      return NextResponse.json({ error: "請求格式錯誤" }, { status: 400 })
+    }
     image = body.image
-    mimeType = body.mimeType
+    mimeType = typeof body.mimeType === "string" ? body.mimeType : undefined
   } catch {
     return NextResponse.json({ error: "請求格式錯誤" }, { status: 400 })
   }
   if (!image) return NextResponse.json({ error: "Missing image" }, { status: 400 })
 
-  const MAX_BASE64 = 7 * 1024 * 1024 // ~5MB 原圖 base64 後約 1.37x
   if (image.length > MAX_BASE64) {
-    return NextResponse.json({ error: "圖片太大，請使用 5MB 以下的圖片" }, { status: 413 })
+    return NextResponse.json({ error: "圖片太大，請使用 8MB 以下的圖片" }, { status: 413 })
   }
+
+  const mediaType: AllowedMime = ALLOWED_MIME.includes(mimeType as AllowedMime)
+    ? (mimeType as AllowedMime)
+    : "image/jpeg"
 
   let response
   try {
@@ -40,7 +100,7 @@ export async function POST(req: NextRequest) {
               type: "image",
               source: {
                 type: "base64",
-                media_type: (mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp") || "image/jpeg",
+                media_type: mediaType,
                 data: image,
               },
             },
@@ -83,10 +143,20 @@ export async function POST(req: NextRequest) {
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (!jsonMatch) return NextResponse.json({ error: "無法辨識資料" }, { status: 422 })
 
+  let parsedJson: unknown
   try {
-    const data = JSON.parse(jsonMatch[0])
-    return NextResponse.json(data)
+    parsedJson = JSON.parse(jsonMatch[0])
   } catch {
     return NextResponse.json({ error: "資料格式錯誤" }, { status: 422 })
   }
+
+  // Validate OCR output against a strict schema before returning it as a
+  // suggestion. Unknown/oversized fields are stripped/rejected; treat as
+  // untrusted — the caller pre-fills a form, nothing is auto-persisted.
+  const validated = ocrResultSchema.safeParse(parsedJson)
+  if (!validated.success) {
+    return NextResponse.json({ error: "資料格式錯誤" }, { status: 422 })
+  }
+
+  return NextResponse.json(validated.data)
 }

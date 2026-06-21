@@ -41,7 +41,8 @@ export async function sendLineMessage(
       console.error("[LINE] push 失敗", res.status, errText)
       return false
     }
-    console.log("[LINE] 推播成功 →", lineUserId)
+    // SEC-7: don't log the full LINE userId (PII) — truncate.
+    console.log("[LINE] 推播成功 →", lineUserId.slice(0, 6) + "***")
     return true
   } catch (err) {
     console.error("[LINE] push error:", err)
@@ -79,14 +80,18 @@ export function formatTWDatetime(date: Date): string {
   return `${parts.month}/${parts.day}（${twWeekday}）${parts.hour}:${parts.minute}`
 }
 
+// LINE-1: cap each substituted value so an over-long customer-controlled field
+// (name/notes/services) can't bloat the outbound message.
+const cap = (s: string, n: number) => (s ?? "").slice(0, n)
+
 export function applyReminderTemplate(
   template: string,
   vars: { name: string; phone: string; time: string; date: string; services: string }
 ): string {
   return template
-    .replace(/\{name\}/g, vars.name)
-    .replace(/\{phone\}/g, vars.phone)
-    .replace(/\{time\}/g, vars.time)
-    .replace(/\{date\}/g, vars.date)
-    .replace(/\{services\}/g, vars.services)
+    .replace(/\{name\}/g, cap(vars.name, 60))
+    .replace(/\{phone\}/g, cap(vars.phone, 30))
+    .replace(/\{time\}/g, cap(vars.time, 30))
+    .replace(/\{date\}/g, cap(vars.date, 30))
+    .replace(/\{services\}/g, cap(vars.services, 200))
 }

@@ -1,36 +1,44 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-04)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { writeAudit } from "@/lib/audit"
+import { requireRole } from "@/lib/auth-guard"
+import { readJson, z } from "@/lib/validation"
+
+const mergeSchema = z.object({
+  primaryId: z.string().trim().min(1),
+  secondaryId: z.string().trim().min(1),
+})
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (session.user.role !== "OWNER") return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // OWNER-only: merging customers reassigns money/points/history.
+  const guard = await requireRole(["OWNER"])
+  if (!guard.ok) return guard.response
 
-  const shopId = session.user.shopId
-  const { primaryId, secondaryId } = await req.json()
+  const { shopId, userId } = guard.ctx
+
+  const parsed = await readJson(req, mergeSchema)
+  if (!parsed.ok) return parsed.response
+  const { primaryId, secondaryId } = parsed.data
 
   if (primaryId === secondaryId) {
     return NextResponse.json({ error: "不能合併同一位客人" }, { status: 400 })
   }
 
   try {
-    const [primary, secondary] = await Promise.all([
-      prisma.customer.findFirst({ where: { id: primaryId, shopId } }),
-      prisma.customer.findFirst({ where: { id: secondaryId, shopId } }),
-    ])
+    const result = await prisma.$transaction(async (tx) => {
+      // Re-scope BOTH customers to this shop INSIDE the tx (no TOCTOU).
+      const [primary, secondary] = await Promise.all([
+        tx.customer.findFirst({ where: { id: primaryId, shopId } }),
+        tx.customer.findFirst({ where: { id: secondaryId, shopId } }),
+      ])
 
-    if (!primary || !secondary) {
-      return NextResponse.json({ error: "客人不存在" }, { status: 404 })
-    }
+      if (!primary || !secondary) return { notFound: true as const }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.pet.updateMany({ where: { customerId: secondaryId }, data: { customerId: primaryId } })
-      await tx.payment.updateMany({ where: { customerId: secondaryId }, data: { customerId: primaryId } })
-      await tx.pointsHistory.updateMany({ where: { customerId: secondaryId }, data: { customerId: primaryId } })
-      await tx.storedValueHistory.updateMany({ where: { customerId: secondaryId }, data: { customerId: primaryId } })
+      await tx.pet.updateMany({ where: { customerId: secondaryId, shopId }, data: { customerId: primaryId } })
+      await tx.payment.updateMany({ where: { customerId: secondaryId, shopId }, data: { customerId: primaryId } })
+      await tx.pointsHistory.updateMany({ where: { customerId: secondaryId, shopId }, data: { customerId: primaryId } })
+      await tx.storedValueHistory.updateMany({ where: { customerId: secondaryId, shopId }, data: { customerId: primaryId } })
       await tx.customer.update({
         where: { id: primaryId },
         data: { storedValue: { increment: secondary.storedValue }, points: { increment: secondary.points } },
@@ -39,16 +47,22 @@ export async function POST(req: NextRequest) {
         where: { id: secondaryId },
         data: { status: "MERGED", storedValue: 0, points: 0 },
       })
+
+      await writeAudit({
+        shopId,
+        userId,
+        action: "MERGE_CUSTOMER",
+        resource: "Customer",
+        resourceId: primaryId,
+        detail: { primaryId, secondaryId, secondaryName: secondary.name },
+      })
+
+      return { notFound: false as const }
     })
 
-    await writeAudit({
-      shopId,
-      userId: session.user.id,
-      action: "MERGE_CUSTOMER",
-      resource: "Customer",
-      resourceId: primaryId,
-      detail: { primaryId, secondaryId, secondaryName: secondary.name },
-    })
+    if (result.notFound) {
+      return NextResponse.json({ error: "客人不存在" }, { status: 404 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

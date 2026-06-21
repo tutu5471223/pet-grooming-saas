@@ -1,8 +1,32 @@
 import { NextRequest, NextResponse } from "next/server"
+import { timingSafeEqual } from "crypto"
 import { prisma } from "@/lib/prisma"
 import { sendLineMessage, applyReminderTemplate } from "@/lib/line"
 
 const DEFAULT_TEMPLATE = `您好，{name}！\n提醒您明天 {date} {time} 有一個寵物美容預約。\n如需更改請提前告知，謝謝！`
+
+/**
+ * TEN-5: CRON_SECRET is MANDATORY (fail-CLOSED). The secret is accepted ONLY via
+ * the `Authorization: Bearer <secret>` header (no ?secret= query param), and is
+ * compared in constant time. Returns a NextResponse to short-circuit on failure,
+ * or null when authorized.
+ */
+function authorizeCron(req: NextRequest): NextResponse | null {
+  const secret = process.env.CRON_SECRET
+  if (!secret) {
+    console.error("[CRON] CRON_SECRET 未設定，拒絕執行")
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 })
+  }
+
+  const authHeader = req.headers.get("authorization") ?? ""
+  const expected = `Bearer ${secret}`
+  const a = Buffer.from(authHeader)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+  return null
+}
 
 // Compute Taiwan tomorrow date range in UTC for DB query
 function getTomorrowTaipeiRangeUTC(): { start: Date; end: Date } {
@@ -15,14 +39,8 @@ function getTomorrowTaipeiRangeUTC(): { start: Date; end: Date } {
 }
 
 export async function GET(req: NextRequest) {
-  // Verify CRON_SECRET to prevent unauthorized triggers
-  const secret = process.env.CRON_SECRET
-  const authHeader = req.headers.get("authorization")
-  const querySecret = new URL(req.url).searchParams.get("secret")
-
-  if (secret && authHeader !== `Bearer ${secret}` && querySecret !== secret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const denied = authorizeCron(req)
+  if (denied) return denied
 
   const { start, end } = getTomorrowTaipeiRangeUTC()
   console.log(`[CRON] 發送預約提醒：${start.toISOString()} ~ ${end.toISOString()}`)

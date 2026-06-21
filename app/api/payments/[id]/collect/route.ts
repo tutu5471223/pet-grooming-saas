@@ -1,17 +1,19 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-22)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
+import { round2, parseMoney } from "@/lib/money"
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // collect() is a normal counter operation — STAFF is allowed.
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   const { id } = await params
-  const shopId = session.user.shopId
 
   let body: {
     billingType: string
@@ -40,6 +42,30 @@ export async function POST(
     return NextResponse.json({ error: "請填寫包月方案資料及付款方式" }, { status: 400 })
   }
 
+  // Validate the only client-supplied money inputs (new monthly plan pricing).
+  // For SINGLE / CREDIT / existing-plan billing the amount is recomputed
+  // server-side from the DB (never trust the client price).
+  let validatedNewPlan:
+    | { name: string; maxSessions: number; pricePerSession: number; startDate: string; endDate: string }
+    | null = null
+  if (billingType === "NEW_MONTHLY_PLAN" && monthlyPlanData) {
+    const price = parseMoney(monthlyPlanData.pricePerSession, { allowZero: false })
+    if (price === null) {
+      return NextResponse.json({ error: "每次金額不正確" }, { status: 400 })
+    }
+    const maxSessions = Number(monthlyPlanData.maxSessions)
+    if (!Number.isInteger(maxSessions) || maxSessions <= 0 || maxSessions > 10000) {
+      return NextResponse.json({ error: "包月次數不正確" }, { status: 400 })
+    }
+    validatedNewPlan = {
+      name: monthlyPlanData.name,
+      maxSessions,
+      pricePerSession: price,
+      startDate: monthlyPlanData.startDate,
+      endDate: monthlyPlanData.endDate,
+    }
+  }
+
   try {
     const payment = await prisma.payment.findFirst({
       where: { id, shopId, status: "PENDING" },
@@ -50,29 +76,18 @@ export async function POST(
     const petId = payment.petId
 
     const result = await prisma.$transaction(async (tx) => {
-      let finalAmount = payment.amount
+      let finalAmount = round2(payment.amount)
       let resolvedMonthlyPlanId: string | null = null
 
       if (billingType === "CREDIT") {
-        const customer = await tx.customer.findUnique({
-          where: { id: customerId },
+        // Re-read balance inside the tx.
+        const customer = await tx.customer.findFirst({
+          where: { id: customerId, shopId },
           select: { storedValue: true },
         })
         if (!customer || customer.storedValue < finalAmount) {
           throw new Error("儲值金餘額不足")
         }
-        await tx.customer.update({
-          where: { id: customerId },
-          data: { storedValue: { decrement: finalAmount } },
-        })
-        await tx.storedValueHistory.create({
-          data: {
-            customerId,
-            shopId,
-            amount: -finalAmount,
-            reason: `美容消費儲值扣款 ${finalAmount} 元`,
-          },
-        })
       } else if (billingType === "MONTHLY_PLAN") {
         if (!petId) throw new Error("找不到寵物資料")
         const now = new Date()
@@ -82,28 +97,75 @@ export async function POST(
         })
         const plan = plans.find((p) => p.usedSessions < p.maxSessions) ?? null
         if (!plan) throw new Error("此寵物無有效包月方案，請確認方案日期與剩餘次數")
-        finalAmount = plan.pricePerSession
+        finalAmount = round2(plan.pricePerSession)
         resolvedMonthlyPlanId = plan.id
-        await tx.petMonthlyPlan.update({
-          where: { id: plan.id },
+        // FIN-3: atomic session decrement — only succeeds while there are
+        // sessions left. count===0 => raced out / exhausted.
+        const consumed = await tx.petMonthlyPlan.updateMany({
+          where: { id: plan.id, shopId, usedSessions: { lt: plan.maxSessions } },
           data: { usedSessions: { increment: 1 } },
         })
+        if (consumed.count !== 1) {
+          throw new Error("此寵物無有效包月方案，請確認方案日期與剩餘次數")
+        }
       } else if (billingType === "NEW_MONTHLY_PLAN") {
-        if (!petId || !monthlyPlanData) throw new Error("包月方案資料不完整")
+        if (!petId || !validatedNewPlan) throw new Error("包月方案資料不完整")
         const newPlan = await tx.petMonthlyPlan.create({
           data: {
             shopId,
             petId,
-            name: monthlyPlanData.name,
-            maxSessions: monthlyPlanData.maxSessions,
-            pricePerSession: monthlyPlanData.pricePerSession,
-            startDate: new Date(monthlyPlanData.startDate),
-            endDate: new Date(monthlyPlanData.endDate),
+            name: validatedNewPlan.name,
+            maxSessions: validatedNewPlan.maxSessions,
+            pricePerSession: validatedNewPlan.pricePerSession,
+            startDate: new Date(validatedNewPlan.startDate),
+            endDate: new Date(validatedNewPlan.endDate),
             usedSessions: 1,
           },
         })
-        finalAmount = monthlyPlanData.pricePerSession
+        finalAmount = round2(validatedNewPlan.pricePerSession)
         resolvedMonthlyPlanId = newPlan.id
+      }
+
+      finalAmount = round2(finalAmount)
+
+      // FIN-2: atomic PENDING->PAID gate. Only one caller can flip it; a
+      // second concurrent collect matches 0 rows and aborts.
+      const flipped = await tx.payment.updateMany({
+        where: { id, shopId, status: "PENDING" },
+        data: {
+          status: "PAID",
+          billingType,
+          paymentMethod: paymentMethod ?? null,
+          monthlyPlanId: resolvedMonthlyPlanId,
+          amount: finalAmount,
+          paidAt: new Date(),
+        },
+      })
+      if (flipped.count !== 1) {
+        throw new Error("此筆款項已被收取")
+      }
+
+      // Side effects run ONLY after the gate succeeds.
+      if (billingType === "CREDIT") {
+        // Balance-guarded atomic debit: the WHERE re-checks storedValue under
+        // the row lock, so two concurrent CREDIT collects on the SAME customer
+        // (different pending payments) cannot both pass a stale balance read and
+        // drive storedValue negative. count===0 => insufficient funds, rolls back.
+        const debited = await tx.customer.updateMany({
+          where: { id: customerId, shopId, storedValue: { gte: finalAmount } },
+          data: { storedValue: { decrement: finalAmount } },
+        })
+        if (debited.count !== 1) {
+          throw new Error("儲值金餘額不足")
+        }
+        await tx.storedValueHistory.create({
+          data: {
+            customerId,
+            shopId,
+            amount: round2(-finalAmount),
+            reason: `美容消費儲值扣款 ${finalAmount} 元`,
+          },
+        })
       }
 
       // Award points (1 per $100)
@@ -123,25 +185,19 @@ export async function POST(
         })
       }
 
-      const updated = await tx.payment.update({
-        where: { id },
-        data: {
-          status: "PAID",
-          billingType,
-          paymentMethod: paymentMethod ?? null,
-          monthlyPlanId: resolvedMonthlyPlanId,
-          amount: finalAmount,
-          paidAt: new Date(),
-        },
-      })
-
+      const updated = await tx.payment.findFirst({ where: { id, shopId } })
       return updated
     })
 
     return NextResponse.json(result)
   } catch (error) {
     const msg = error instanceof Error ? error.message : "操作失敗，請稍後再試"
-    const isUserError = ["儲值金餘額不足", "無有效包月方案", "包月方案資料不完整"].some((s) => msg.includes(s))
+    const isUserError = [
+      "儲值金餘額不足",
+      "無有效包月方案",
+      "包月方案資料不完整",
+      "已被收取",
+    ].some((s) => msg.includes(s))
     if (isUserError) return NextResponse.json({ error: msg }, { status: 400 })
     console.error("POST /api/payments/[id]/collect", error)
     return NextResponse.json({ error: "操作失敗，請稍後再試" }, { status: 500 })

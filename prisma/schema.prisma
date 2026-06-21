@@ -279,6 +279,7 @@ model Payment {
   monthlyPlanId    String?
   monthlyPlan      PetMonthlyPlan? @relation(fields: [monthlyPlanId], references: [id])
   amount           Float
+  refundedAmount   Float           @default(0)
   billingType      String          @default("SINGLE")
   paymentMethod    String?
   status           String          @default("PENDING")

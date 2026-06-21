@@ -1,43 +1,62 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
 import { differenceInDays } from "date-fns"
+import { readJson, shortText, longText, z } from "@/lib/validation"
+import { round2 } from "@/lib/money"
+
+const patchSchema = z.object({
+  status: shortText.optional(),
+  checkOut: z.string().min(1).nullish(),
+  notes: longText.nullish(),
+})
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   const { id } = await params
-  const shopId = session.user.shopId
-  const body = await req.json()
 
   try {
+    const parsed = await readJson(req, patchSchema)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
+
     const record = await prisma.boardingRecord.findFirst({
       where: { id, shopId },
       include: { pet: { select: { customerId: true } }, payment: true },
     })
     if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
+    let checkOutDate: Date | null = record.checkOut
+    if (body.checkOut) {
+      checkOutDate = new Date(body.checkOut)
+      if (isNaN(checkOutDate.getTime())) {
+        return NextResponse.json({ error: "checkOut 日期格式錯誤" }, { status: 400 })
+      }
+    }
+
     let totalCost = record.totalCost
-    if (body.status === "CHECKED_OUT" && body.checkOut) {
-      const checkOut = new Date(body.checkOut)
-      const days = Math.max(1, differenceInDays(checkOut, record.checkIn))
+    if (body.status === "CHECKED_OUT" && body.checkOut && checkOutDate) {
+      const days = Math.max(1, differenceInDays(checkOutDate, record.checkIn))
+      // SECURITY: cost recomputed server-side from the DB record, never client input.
       const baseCost = days * record.dailyRate
       const addOns: { price: number }[] = (() => {
         try { return record.addOnServices ? JSON.parse(record.addOnServices) : [] } catch { return [] }
       })()
-      const addOnTotal = addOns.reduce((s, a) => s + a.price, 0)
+      const addOnTotal = addOns.reduce((s, a) => s + (Number.isFinite(a.price) ? a.price : 0), 0)
       const adjustment = record.priceAdjustment ?? 0
-      totalCost = baseCost + addOnTotal + adjustment
+      totalCost = round2(baseCost + addOnTotal + adjustment)
     }
 
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.boardingRecord.update({
         where: { id },
         data: {
-          status: body.status,
-          checkOut: body.checkOut ? new Date(body.checkOut) : record.checkOut,
+          status: body.status ?? record.status,
+          checkOut: checkOutDate,
           totalCost,
           notes: body.notes ?? record.notes,
         },
@@ -45,8 +64,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       if (body.status === "CHECKED_OUT") {
         if (record.roomId) {
-          await tx.boardingRoom.update({
-            where: { id: record.roomId },
+          await tx.boardingRoom.updateMany({
+            where: { id: record.roomId, shopId },
             data: { status: "AVAILABLE" },
           })
         }
@@ -57,7 +76,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               shopId,
               customerId: record.pet.customerId,
               boardingRecordId: id,
-              amount: totalCost,
+              amount: round2(totalCost),
               billingType: "SINGLE",
               paymentMethod: "CASH",
               status: "PAID",
@@ -78,11 +97,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   const { id } = await params
-  const shopId = session.user.shopId
 
   try {
     const record = await prisma.boardingRecord.findFirst({ where: { id, shopId } })
@@ -97,8 +116,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         data: { status: "CANCELLED" },
       })
       if (record.roomId) {
-        await tx.boardingRoom.update({
-          where: { id: record.roomId },
+        await tx.boardingRoom.updateMany({
+          where: { id: record.roomId, shopId },
           data: { status: "AVAILABLE" },
         })
       }

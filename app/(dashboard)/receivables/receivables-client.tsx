@@ -17,10 +17,12 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { CollectPaymentDialog } from "@/components/dashboard/collect-payment-dialog"
 
 interface ARPayment {
   id: string
   amount: number
+  billingType: string
   paymentMethod: string | null
   status: string
   notes: string | null
@@ -57,6 +59,10 @@ export function ReceivablesClient({ items, status, isOwner }: Props) {
   const [form, setForm] = useState({ customerId: "", amount: "", notes: "" })
   const [creating, setCreating] = useState(false)
   const [searchTimer, setSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
+  // CREDIT / MONTHLY_PLAN receivables must be settled via the collect flow
+  // (stored-value / monthly-plan side effects). PATCH-to-PAID is rejected (422)
+  // for those billing types, so route them through the collect dialog.
+  const [collectTarget, setCollectTarget] = useState<{ id: string; amount: number } | null>(null)
 
   function handleCustomerSearch(value: string) {
     setCustomerSearch(value)
@@ -71,12 +77,30 @@ export function ReceivablesClient({ items, status, isOwner }: Props) {
     setSearchTimer(t)
   }
 
-  async function markPaid(id: string) {
-    await fetch(`/api/receivables/${id}`, {
+  async function markPaid(item: ARPayment) {
+    // CREDIT / MONTHLY_PLAN must go through the collect endpoint (the PATCH
+    // route returns 422 USE_COLLECT_ENDPOINT for them). Open the collect dialog.
+    if (item.billingType === "CREDIT" || item.billingType === "MONTHLY_PLAN") {
+      setCollectTarget({ id: item.id, amount: item.amount })
+      return
+    }
+    // SINGLE (and any other) receivables: mark paid directly via PATCH.
+    const res = await fetch(`/api/receivables/${item.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "PAID" }),
     })
+    if (!res.ok) {
+      // 422 USE_COLLECT_ENDPOINT (defensive — should not happen for SINGLE)
+      // routes the user to the collect flow; any other error is surfaced.
+      if (res.status === 422) {
+        setCollectTarget({ id: item.id, amount: item.amount })
+        return
+      }
+      const data = await res.json().catch(() => ({}))
+      alert(data.error || "操作失敗，請稍後再試")
+      return
+    }
     router.refresh()
   }
 
@@ -169,7 +193,7 @@ export function ReceivablesClient({ items, status, isOwner }: Props) {
                       {status === "PENDING" && (
                         <td className="py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <Button size="sm" variant="ghost" className="h-7 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => markPaid(item.id)}>
+                            <Button size="sm" variant="ghost" className="h-7 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => markPaid(item)}>
                               <CheckCircle2 className="h-4 w-4" />
                             </Button>
                             <Button size="sm" variant="ghost" className="h-7 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => deleteAR(item.id)}>
@@ -250,6 +274,20 @@ export function ReceivablesClient({ items, status, isOwner }: Props) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {collectTarget && (
+        <CollectPaymentDialog
+          paymentId={collectTarget.id}
+          amount={collectTarget.amount}
+          open={!!collectTarget}
+          onOpenChange={(open) => {
+            if (!open) {
+              setCollectTarget(null)
+              router.refresh()
+            }
+          }}
+        />
+      )}
     </>
   )
 }

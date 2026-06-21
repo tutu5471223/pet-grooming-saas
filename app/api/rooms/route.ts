@@ -1,15 +1,18 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
+import { readJson, money, shortText, longText, z } from "@/lib/validation"
+import { round2 } from "@/lib/money"
 
 export async function GET() {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   try {
     const rooms = await prisma.boardingRoom.findMany({
-      where: { shopId: session.user.shopId },
+      where: { shopId },
       orderBy: { name: "asc" },
     })
     return NextResponse.json(rooms)
@@ -19,18 +22,29 @@ export async function GET() {
   }
 }
 
+const createSchema = z.object({
+  name: shortText.min(1),
+  type: shortText.nullish(),
+  dailyRate: money.optional(),
+  notes: longText.nullish(),
+})
+
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   try {
-    const body = await req.json()
+    const parsed = await readJson(req, createSchema)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
+
     const room = await prisma.boardingRoom.create({
       data: {
-        shopId: session.user.shopId,
+        shopId,
         name: body.name,
         type: body.type || null,
-        dailyRate: body.dailyRate || 0,
+        dailyRate: round2(body.dailyRate ?? 0),
         notes: body.notes || null,
       },
     })
