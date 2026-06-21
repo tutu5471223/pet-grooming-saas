@@ -40,19 +40,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
 
       // Atomically bump the original payment's refundedAmount; flip to
-      // REFUNDED when fully refunded, otherwise keep PAID. The status guard
-      // makes this idempotent — a concurrent full-refund would already have
-      // flipped status to REFUNDED and this updateMany would match 0 rows.
+      // REFUNDED when fully refunded, otherwise keep PAID.
+      //
+      // The ceiling is enforced INSIDE the WHERE (refundedAmount <= amount - thisRefund)
+      // so it is re-evaluated under the row lock at update time. This closes the
+      // concurrent-partial-refund race: the cumulative check above is a stale read,
+      // but the conditional updateMany cannot let two concurrent partial refunds
+      // push refundedAmount past the original amount — the second to commit sees the
+      // first's value and matches 0 rows.
       const fullyRefunded = newRefundedTotal >= round2(payment.amount)
+      const maxPriorRefunded = round2(round2(payment.amount) - amount)
       const bumped = await tx.payment.updateMany({
-        where: { id, shopId, status: "PAID" },
+        where: { id, shopId, status: "PAID", refundedAmount: { lte: maxPriorRefunded } },
         data: {
           refundedAmount: { increment: amount },
           ...(fullyRefunded ? { status: "REFUNDED" } : {}),
         },
       })
       if (bumped.count !== 1) {
-        throw new Error("REFUND_NOT_FOUND")
+        // Either the payment is no longer PAID/found, or a concurrent refund
+        // would push the cumulative total over the original amount.
+        throw new Error("REFUND_EXCEEDS")
       }
 
       const refund = await tx.payment.create({

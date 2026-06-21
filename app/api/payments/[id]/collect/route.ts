@@ -147,10 +147,17 @@ export async function POST(
 
       // Side effects run ONLY after the gate succeeds.
       if (billingType === "CREDIT") {
-        await tx.customer.update({
-          where: { id: customerId },
+        // Balance-guarded atomic debit: the WHERE re-checks storedValue under
+        // the row lock, so two concurrent CREDIT collects on the SAME customer
+        // (different pending payments) cannot both pass a stale balance read and
+        // drive storedValue negative. count===0 => insufficient funds, rolls back.
+        const debited = await tx.customer.updateMany({
+          where: { id: customerId, shopId, storedValue: { gte: finalAmount } },
           data: { storedValue: { decrement: finalAmount } },
         })
+        if (debited.count !== 1) {
+          throw new Error("儲值金餘額不足")
+        }
         await tx.storedValueHistory.create({
           data: {
             customerId,
