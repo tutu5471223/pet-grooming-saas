@@ -8,7 +8,7 @@ export async function POST(
   const { shopId } = await params
   const body = await req.json()
 
-  const { name, phone, petName, petSpecies, preferredDate, preferredTime, notes, services } = body
+  const { name, phone, petName, petSpecies, preferredDate, preferredTime, preferredTime2, preferredTime3, notes, services } = body
 
   if (!name?.trim() || !phone?.trim() || !petName?.trim()) {
     return NextResponse.json({ error: "請填寫必填欄位" }, { status: 400 })
@@ -57,7 +57,11 @@ export async function POST(
         : null
 
     const noteParts: string[] = []
-    if (preferredTime && preferredTime !== "不限") noteParts.push(`偏好時段：${preferredTime}`)
+    const timeParts: string[] = []
+    if (preferredTime) timeParts.push(`第一選擇：${preferredTime}`)
+    if (preferredTime2) timeParts.push(`第二選擇：${preferredTime2}`)
+    if (preferredTime3) timeParts.push(`第三選擇：${preferredTime3}`)
+    if (timeParts.length > 0) noteParts.push(`偏好時段：${timeParts.join("、")}`)
     if (notes?.trim()) noteParts.push(notes.trim())
 
     const appointment = await prisma.appointment.create({
@@ -79,7 +83,11 @@ export async function POST(
       `客人：${name}（${phone}）`,
       `寵物：${petName}（${petSpecies || "犬"}）`,
     ]
-    if (preferredDate) notifParts.push(`希望時間：${preferredDate}${preferredTime ? " " + preferredTime : ""}`)
+    if (preferredDate) {
+      notifParts.push(`希望時間：${preferredDate}${preferredTime ? " " + preferredTime : "（時間未指定）"}`)
+      if (preferredTime2) notifParts.push(`第二選擇：${preferredDate} ${preferredTime2}`)
+      if (preferredTime3) notifParts.push(`第三選擇：${preferredDate} ${preferredTime3}`)
+    }
     if (notes?.trim()) notifParts.push(`備註：${notes.trim()}`)
 
     await prisma.notification.create({

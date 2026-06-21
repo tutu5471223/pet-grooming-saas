@@ -77,11 +77,17 @@ async function processEvents(events: LineEvent[]) {
         continue
       }
 
+      // Member query keywords
+      if (/查詢|會員|我的資料|點數|儲值/.test(text)) {
+        await handleMemberQuery(lineUserId, event.replyToken)
+        continue
+      }
+
       // Any other message → generic reply
       if (event.replyToken) {
         await replyMessage(
           event.replyToken,
-          "您好！如需連結帳號，請傳送您登記的手機號碼（格式：09xxxxxxxx）。"
+          "您好！如需連結帳號，請傳送您登記的手機號碼（格式：09xxxxxxxx）。\n如需查詢會員資料，請傳送「查詢」。"
         )
       }
     }
@@ -116,6 +122,54 @@ async function handlePhoneLinking(lineUserId: string, phone: string, replyToken?
       replyToken,
       `帳號連結成功！✅\n您的 LINE 已與「${shopNames}」的客戶資料完成綁定。\n之後預約確認、美容完工通知將自動傳送給您。`
     )
+  }
+}
+
+async function handleMemberQuery(lineUserId: string, replyToken?: string) {
+  const customers = await prisma.customer.findMany({
+    where: { lineUserId, status: "ACTIVE" },
+    include: {
+      shop: { select: { name: true } },
+      pets: {
+        where: { isActive: true },
+        include: {
+          petMonthlyPlans: {
+            where: { endDate: { gte: new Date() } },
+            select: { maxSessions: true, usedSessions: true },
+          },
+        },
+      },
+    },
+  })
+
+  if (customers.length === 0) {
+    if (replyToken) {
+      await replyMessage(
+        replyToken,
+        "找不到您的會員資料。\n請先傳送您的手機號碼（09xxxxxxxx）完成帳號連結。"
+      )
+    }
+    return
+  }
+
+  const parts: string[] = []
+  for (const customer of customers) {
+    const remaining = customer.pets.reduce((sum, pet) =>
+      sum + pet.petMonthlyPlans.reduce((s, p) => s + Math.max(0, p.maxSessions - p.usedSessions), 0), 0)
+
+    parts.push(
+      `【${customer.shop.name}】您的會員資料`,
+      `👤 姓名：${customer.name}`,
+      `💰 儲值餘額：$${Math.round(customer.storedValue).toLocaleString()}`,
+      `⭐ 點數：${customer.points} 點`,
+      `📅 包月剩餘：${remaining} 次`,
+      `如有疑問請聯絡店家`,
+    )
+    if (customers.length > 1) parts.push("")
+  }
+
+  if (replyToken) {
+    await replyMessage(replyToken, parts.join("\n").trim())
   }
 }
 

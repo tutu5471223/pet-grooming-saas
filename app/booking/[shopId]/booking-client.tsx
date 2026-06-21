@@ -23,6 +23,12 @@ interface Shop {
   address: string | null
 }
 
+const TIME_OPTIONS = Array.from({ length: 25 }, (_, i) => {
+  const hour = String(Math.floor(i / 2) + 8).padStart(2, "0")
+  const min = i % 2 === 0 ? "00" : "30"
+  return `${hour}:${min}`
+})
+
 interface BookingClientProps {
   shop: Shop
   services: Service[]
@@ -49,6 +55,8 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
     petSpecies: "犬",
     preferredDate: "",
     preferredTime: "",
+    preferredTime2: "",
+    preferredTime3: "",
     notes: "",
   })
   const [phoneError, setPhoneError] = useState("")
@@ -161,6 +169,8 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
           petSpecies: form.petSpecies,
           preferredDate: form.preferredDate || null,
           preferredTime: form.preferredTime || null,
+          preferredTime2: form.preferredTime2 || null,
+          preferredTime3: form.preferredTime3 || null,
           notes: form.notes,
           services: effectiveServices.map((s) => ({ name: s.name, price: s.effectivePrice })),
         }),
@@ -407,7 +417,7 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
                 </div>
               </div>
 
-              {/* Preference — Task 2: text input for time, clear application-based messaging */}
+              {/* Preference */}
               <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
                 <div>
                   <p className="text-sm font-semibold text-gray-700">偏好時間</p>
@@ -426,7 +436,7 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="preferredTime" className="text-xs">偏好時間（選填）</Label>
+                    <Label htmlFor="preferredTime" className="text-xs">第一選擇時間 *</Label>
                     <select
                       id="preferredTime"
                       value={form.preferredTime}
@@ -434,13 +444,31 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
                       className="w-full h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     >
                       <option value="">不指定</option>
-                      {Array.from({ length: 25 }, (_, i) => {
-                        const hour = String(Math.floor(i / 2) + 8).padStart(2, "0")
-                        const min = i % 2 === 0 ? "00" : "30"
-                        return `${hour}:${min}`
-                      }).map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
+                      {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="preferredTime2" className="text-xs">第二選擇時間（選填）</Label>
+                    <select
+                      id="preferredTime2"
+                      value={form.preferredTime2}
+                      onChange={(e) => setForm({ ...form, preferredTime2: e.target.value })}
+                      className="w-full h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="">不指定</option>
+                      {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="preferredTime3" className="text-xs">第三選擇時間（選填）</Label>
+                    <select
+                      id="preferredTime3"
+                      value={form.preferredTime3}
+                      onChange={(e) => setForm({ ...form, preferredTime3: e.target.value })}
+                      className="w-full h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="">不指定</option>
+                      {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                 </div>
@@ -511,12 +539,26 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
                   </div>
                 )}
                 {form.preferredDate && (
-                  <div className="flex justify-between">
-                    <span>偏好時間</span>
-                    <span className="font-medium text-gray-900">
-                      {form.preferredDate}{form.preferredTime ? ` ${form.preferredTime}` : ""}
-                    </span>
-                  </div>
+                  <>
+                    <div className="flex justify-between">
+                      <span>第一選擇</span>
+                      <span className="font-medium text-gray-900">
+                        {form.preferredDate}{form.preferredTime ? ` ${form.preferredTime}` : ""}
+                      </span>
+                    </div>
+                    {form.preferredTime2 && (
+                      <div className="flex justify-between">
+                        <span>第二選擇</span>
+                        <span className="font-medium text-gray-900">{form.preferredDate} {form.preferredTime2}</span>
+                      </div>
+                    )}
+                    {form.preferredTime3 && (
+                      <div className="flex justify-between">
+                        <span>第三選擇</span>
+                        <span className="font-medium text-gray-900">{form.preferredDate} {form.preferredTime3}</span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
