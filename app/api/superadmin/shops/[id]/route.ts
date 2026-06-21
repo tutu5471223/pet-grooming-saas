@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
+import { writeAudit } from "@/lib/audit"
+import { readJson, z } from "@/lib/validation"
+
+const superadminShopActionSchema = z.object({
+  action: z.enum(["approve", "reject", "suspend", "activate"]),
+})
 
 export async function PATCH(
   req: NextRequest,
@@ -14,8 +20,10 @@ export async function PATCH(
   }
 
   const { id } = await params
-  const body = await req.json()
-  const { action } = body as { action: "approve" | "reject" | "suspend" | "activate" }
+
+  const parsed = await readJson(req, superadminShopActionSchema)
+  if (!parsed.ok) return parsed.response
+  const { action } = parsed.data
 
   const shop = await prisma.shop.findUnique({
     where: { id },
@@ -33,6 +41,15 @@ export async function PATCH(
   if (!newStatus) return NextResponse.json({ error: "Invalid action" }, { status: 400 })
 
   await prisma.shop.update({ where: { id }, data: { status: newStatus } })
+
+  await writeAudit({
+    shopId: id,
+    userId: session.user.id,
+    action: `superadmin.shop.${action}`,
+    resource: "shop",
+    resourceId: id,
+    detail: { status: newStatus },
+  })
 
   const owner = shop.users[0]
   if (owner?.email) {

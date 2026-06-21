@@ -3,6 +3,20 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { writeAudit } from "@/lib/audit"
+import { requireRole } from "@/lib/auth-guard"
+import { readJson, z, shortText, phone } from "@/lib/validation"
+
+// Non-strict: validate the known fields we read, allow extra keys from the UI.
+const updateCustomerSchema = z.object({
+  name: shortText.min(1).optional(),
+  phone: phone.optional(),
+  lineId: z.string().trim().max(100).optional().nullable(),
+  address: shortText.optional().nullable(),
+  notes: z.string().trim().max(2000).optional().nullable(),
+  flagType: z.string().trim().max(50).optional().nullable(),
+  flagNote: z.string().trim().max(500).optional().nullable(),
+  memberLevelId: z.string().trim().max(100).optional().nullable(),
+})
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -50,7 +64,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params
   const shopId = session.user.shopId
-  const body = await req.json()
+
+  const parsed = await readJson(req, updateCustomerSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
 
   try {
     const customer = await prisma.customer.updateMany({
@@ -58,9 +75,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: {
         name: body.name,
         phone: body.phone,
-        lineId: body.lineId || null,
-        address: body.address || null,
-        notes: body.notes || null,
+        lineId: body.lineId !== undefined ? (body.lineId || null) : undefined,
+        address: body.address !== undefined ? (body.address || null) : undefined,
+        notes: body.notes !== undefined ? (body.notes || null) : undefined,
         flagType: body.flagType !== undefined ? (body.flagType || null) : undefined,
         flagNote: body.flagNote !== undefined ? (body.flagNote || null) : undefined,
         memberLevelId: body.memberLevelId !== undefined ? (body.memberLevelId || null) : undefined,
@@ -84,11 +101,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // AUTH-1: destructive cascade delete is OWNER-only.
+  const guard = await requireRole(["OWNER"])
+  if (!guard.ok) return guard.response
 
   const { id } = await params
-  const shopId = session.user.shopId
+  const { shopId, userId } = guard.ctx
 
   try {
   const customer = await prisma.customer.findFirst({ where: { id, shopId } })
@@ -143,7 +161,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   await writeAudit({
     shopId,
-    userId: session.user.id,
+    userId,
     action: "DELETE_CUSTOMER",
     resource: "Customer",
     resourceId: id,

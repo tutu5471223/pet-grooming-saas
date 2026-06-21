@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAuth } from "@/lib/auth-guard"
+import { sanitizeContractHtml } from "@/lib/sanitize"
 
 export async function POST(
   _req: NextRequest,
@@ -28,7 +29,8 @@ export async function POST(
       data: {
         petId,
         shopId,
-        content: shop?.contractTemplate ?? "",
+        // Sanitize shop-authored HTML before storing (defense vs stored XSS).
+        content: sanitizeContractHtml(shop?.contractTemplate ?? ""),
         status: "PENDING",
       },
     })

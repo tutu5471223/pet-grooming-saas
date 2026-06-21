@@ -3,6 +3,19 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { sendLineMessage } from "@/lib/line"
+import { readJson, z, money } from "@/lib/validation"
+
+// Non-strict: validate known fields' types/bounds; tolerate extra keys.
+const patchSchema = z.object({
+  status: z.string().max(50).optional(),
+  staffId: z.string().min(1).optional().nullable(),
+  notes: z.string().max(5000).optional().nullable(),
+  scheduledAt: z.string().optional().nullable(),
+  services: z.any().optional(),
+  estimatedCost: money.optional().nullable(),
+  duration: z.number().int().positive().max(24 * 60).optional().nullable(),
+  petMonthlyPlanId: z.string().min(1).optional().nullable(),
+})
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -10,11 +23,34 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params
   const shopId = session.user.shopId
-  const body = await req.json()
+
+  const parsed = await readJson(req, patchSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
 
   try {
     const existing = await prisma.appointment.findFirst({ where: { id, shopId } })
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    // TEN-3: verify any client-supplied foreign ids belong to this shop before persisting.
+    if (body.staffId) {
+      const staff = await prisma.user.findFirst({
+        where: { id: body.staffId, shopId },
+        select: { id: true },
+      })
+      if (!staff) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+    if (body.petMonthlyPlanId) {
+      const plan = await prisma.petMonthlyPlan.findFirst({
+        where: { id: body.petMonthlyPlanId, shopId },
+        select: { id: true },
+      })
+      if (!plan) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+
+    if (body.scheduledAt && isNaN(new Date(body.scheduledAt).getTime())) {
+      return NextResponse.json({ error: "預約時間格式錯誤" }, { status: 400 })
+    }
 
     await prisma.appointment.update({
       where: { id },

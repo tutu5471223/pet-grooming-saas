@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
+import { round2, MAX_MONEY } from "@/lib/money"
+
+const MAX_STOCK = 1_000_000
 
 export async function GET(req: NextRequest) {
   const guard = await requireAuth()
@@ -45,10 +48,10 @@ export async function POST(req: NextRequest) {
     }
     const priceNum = Number(price)
     const stockNum = Number(stock)
-    if (!Number.isFinite(priceNum) || priceNum < 0) {
+    if (!Number.isFinite(priceNum) || priceNum < 0 || priceNum > MAX_MONEY) {
       return NextResponse.json({ error: "請填寫有效售價" }, { status: 400 })
     }
-    if (!Number.isInteger(stockNum) || stockNum < 0) {
+    if (!Number.isInteger(stockNum) || stockNum < 0 || stockNum > MAX_STOCK) {
       return NextResponse.json({ error: "庫存必須為非負整數" }, { status: 400 })
     }
 
@@ -57,7 +60,7 @@ export async function POST(req: NextRequest) {
         shopId,
         name: name.trim(),
         category: category || "GROOMING",
-        price: priceNum,
+        price: round2(priceNum),
         stock: stockNum,
         unit: unit?.trim() || "個",
         description: description?.trim() || null,

@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
+import { readJson, z, positiveMoney } from "@/lib/validation"
+import { round2 } from "@/lib/money"
+import { writeAudit } from "@/lib/audit"
+
+const topupSchema = z.object({
+  amount: positiveMoney,
+  method: z.string().trim().max(50).optional(),
+  notes: z.string().trim().max(500).optional(),
+})
 
 export async function POST(
   req: NextRequest,
@@ -9,16 +18,18 @@ export async function POST(
   const guard = await requireAuth()
   if (!guard.ok) return guard.response
 
-  const { shopId } = guard.ctx
+  const { shopId, userId } = guard.ctx
   const { id } = await params
-  const body = await req.json()
-  const { amount, method, notes } = body
 
-  if (!amount || Number(amount) < 100) {
+  const parsed = await readJson(req, topupSchema)
+  if (!parsed.ok) return parsed.response
+  const { amount, method, notes } = parsed.data
+
+  if (amount < 100) {
     return NextResponse.json({ error: "充值金額最低 100 元" }, { status: 400 })
   }
 
-  const topupAmount = Number(amount)
+  const topupAmount = round2(amount)
 
   try {
     // SECURITY: Verify customer belongs to this shop
@@ -39,6 +50,14 @@ export async function POST(
       })
       await tx.storedValueHistory.create({
         data: { customerId: id, shopId, amount: topupAmount, reason },
+      })
+      await writeAudit({
+        shopId,
+        userId,
+        action: "STORED_VALUE_TOPUP",
+        resource: "Customer",
+        resourceId: id,
+        detail: { amount: topupAmount, method: methodLabel },
       })
       return updatedCustomer
     })

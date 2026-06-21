@@ -1,16 +1,22 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-04)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { writeAudit } from "@/lib/audit"
+import { requireAuth, requireRole } from "@/lib/auth-guard"
+import { readJson, positiveMoney, shortText, longText, z } from "@/lib/validation"
+import { round2 } from "@/lib/money"
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
-  const shopId = session.user.shopId
   const { searchParams } = new URL(req.url)
-  const status = searchParams.get("status") ?? "PENDING"
+  const requestedStatus = searchParams.get("status") ?? "PENDING"
+  // Whitelist status filter to avoid arbitrary value injection into the query.
+  const status = ["PENDING", "PAID", "REFUNDED"].includes(requestedStatus)
+    ? requestedStatus
+    : "PENDING"
 
   try {
     const payments = await prisma.payment.findMany({
@@ -30,13 +36,23 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (session.user.role !== "OWNER") return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+const createSchema = z.object({
+  customerId: shortText.min(1),
+  amount: positiveMoney,
+  notes: longText.nullable().optional(),
+})
 
-  const shopId = session.user.shopId
-  const body = await req.json()
+export async function POST(req: NextRequest) {
+  // Creating a receivable is a financial action: OWNER only.
+  const guard = await requireRole(["OWNER"])
+  if (!guard.ok) return guard.response
+  const { shopId, userId } = guard.ctx
+
+  const parsed = await readJson(req, createSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
+
+  const amount = round2(body.amount)
 
   try {
     const customer = await prisma.customer.findFirst({
@@ -48,7 +64,7 @@ export async function POST(req: NextRequest) {
       data: {
         shopId,
         customerId: body.customerId,
-        amount: Number(body.amount),
+        amount,
         billingType: "SINGLE",
         status: "PENDING",
         notes: body.notes || null,
@@ -60,11 +76,11 @@ export async function POST(req: NextRequest) {
 
     await writeAudit({
       shopId,
-      userId: session.user.id,
+      userId,
       action: "CREATE_RECEIVABLE",
       resource: "Payment",
       resourceId: payment.id,
-      detail: { customerId: body.customerId, amount: body.amount },
+      detail: { customerId: body.customerId, amount },
     })
 
     return NextResponse.json(payment, { status: 201 })

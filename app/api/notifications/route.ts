@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
+import { readJson, shortText, longText, z } from "@/lib/validation"
 
 export async function GET() {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
-  const shopId = session.user.shopId
   try {
     const [notifications, unreadCount] = await Promise.all([
       prisma.notification.findMany({
@@ -23,13 +24,23 @@ export async function GET() {
   }
 }
 
-export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+const createSchema = z.object({
+  type: shortText.optional(),
+  title: shortText.min(1),
+  body: longText.nullish(),
+  relatedId: shortText.nullish(),
+})
 
-  const body = await req.json()
-  const shopId = session.user.shopId
+export async function POST(req: NextRequest) {
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
+
   try {
+    const parsed = await readJson(req, createSchema)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
+
     const n = await prisma.notification.create({
       data: {
         shopId,
@@ -47,10 +58,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH() {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
-  const shopId = session.user.shopId
   try {
     await prisma.notification.updateMany({
       where: { shopId, isRead: false },

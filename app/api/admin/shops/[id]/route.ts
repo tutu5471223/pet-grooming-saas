@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { writeAudit } from "@/lib/audit"
+import { readJson, z } from "@/lib/validation"
+
+const adminShopActionSchema = z.object({
+  action: z.enum(["extend_trial", "disable_shop", "enable_shop"]),
+  days: z.number().int().positive().max(3650).optional(),
+})
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -34,11 +41,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params
-  const body = await req.json()
+
+  const parsed = await readJson(req, adminShopActionSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
 
   try {
     if (body.action === "extend_trial") {
-      const days = Number(body.days) || 7
+      const days = body.days ?? 7
       const existing = await prisma.subscription.findFirst({
         where: { shopId: id },
         orderBy: { createdAt: "desc" },
@@ -51,16 +61,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           data: { currentPeriodEnd: newEnd, status: "TRIAL" },
         })
       }
+      await writeAudit({
+        shopId: id,
+        userId: session.user.id,
+        action: "admin.shop.extend_trial",
+        resource: "shop",
+        resourceId: id,
+        detail: { days },
+      })
       return NextResponse.json({ success: true })
     }
 
     if (body.action === "disable_shop") {
       await prisma.user.updateMany({ where: { shopId: id }, data: { isActive: false } })
+      await writeAudit({
+        shopId: id,
+        userId: session.user.id,
+        action: "admin.shop.disable",
+        resource: "shop",
+        resourceId: id,
+      })
       return NextResponse.json({ success: true })
     }
 
     if (body.action === "enable_shop") {
       await prisma.user.updateMany({ where: { shopId: id }, data: { isActive: true } })
+      await writeAudit({
+        shopId: id,
+        userId: session.user.id,
+        action: "admin.shop.enable",
+        resource: "shop",
+        resourceId: id,
+      })
       return NextResponse.json({ success: true })
     }
 

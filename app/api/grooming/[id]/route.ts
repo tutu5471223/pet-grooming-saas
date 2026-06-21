@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { readJson, money, longText, z } from "@/lib/validation"
+import { round2 } from "@/lib/money"
+
+// Non-strict schema: validate types/bounds of known fields, allow extra keys.
+const updateSchema = z.object({
+  groomerId: z.string().min(1).optional().nullable(),
+  services: z.array(z.unknown()).optional(),
+  products: z.string().optional().nullable(),
+  totalCost: money.optional(),
+  skinCondition: longText.optional().nullable(),
+  furCondition: longText.optional().nullable(),
+  notes: longText.optional().nullable(),
+  date: z.string().optional(),
+})
 
 export async function PATCH(
   req: NextRequest,
@@ -11,18 +25,32 @@ export async function PATCH(
 
   const shopId = session.user.shopId
   const { id } = await params
-  const body = await req.json()
+
+  const parsed = await readJson(req, updateSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
 
   try {
     const record = await prisma.groomingRecord.findFirst({ where: { id, shopId } })
     if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const totalCost = body.totalCost !== undefined ? Number(body.totalCost) : record.totalCost
+    // SECURITY: Verify groomer (a User) belongs to this shop before storing.
+    let groomerId = record.groomerId
+    if (body.groomerId !== undefined) {
+      groomerId = body.groomerId || null
+      if (groomerId) {
+        const groomer = await prisma.user.findFirst({ where: { id: groomerId, shopId } })
+        if (!groomer) return NextResponse.json({ error: "Groomer not found" }, { status: 404 })
+      }
+    }
+
+    const totalCost =
+      body.totalCost !== undefined ? round2(body.totalCost) : record.totalCost
 
     const updated = await prisma.groomingRecord.update({
       where: { id },
       data: {
-        groomerId: body.groomerId !== undefined ? (body.groomerId || null) : record.groomerId,
+        groomerId,
         services: body.services !== undefined ? JSON.stringify(body.services) : record.services,
         products: body.products !== undefined ? (body.products || null) : record.products,
         totalCost,

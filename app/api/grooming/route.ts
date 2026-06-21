@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { sendLineMessage, buildBaseUrl } from "@/lib/line"
+import { readJson, money, shortText, longText, z } from "@/lib/validation"
+import { round2 } from "@/lib/money"
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -26,13 +28,33 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// Non-strict schema: validate types/bounds of known fields, allow extra keys.
+const createSchema = z.object({
+  petId: z.string().min(1),
+  appointmentId: z.string().min(1).optional().nullable(),
+  groomerId: z.string().min(1).optional().nullable(),
+  services: z.array(z.unknown()).optional(),
+  products: z.string().optional().nullable(),
+  totalCost: money.optional(),
+  beforePhotoUrl: shortText.optional().nullable(),
+  afterPhotoUrl: shortText.optional().nullable(),
+  skinCondition: longText.optional().nullable(),
+  furCondition: longText.optional().nullable(),
+  notes: longText.optional().nullable(),
+  paymentNotes: longText.optional().nullable(),
+  date: z.string().optional(),
+})
+
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const shopId = session.user.shopId
   const baseUrl = buildBaseUrl(req)
-  const body = await req.json()
+
+  const parsed = await readJson(req, createSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
 
   // SECURITY: Verify pet belongs to this shop before creating record.
   const pet = await prisma.pet.findFirst({
@@ -46,7 +68,14 @@ export async function POST(req: NextRequest) {
     if (!apt) return NextResponse.json({ error: "Appointment not found" }, { status: 404 })
   }
 
-  const totalCost: number = body.totalCost || 0
+  // SECURITY (TEN-3): Verify groomer (a User) belongs to this shop before storing.
+  const groomerId: string | null = body.groomerId || null
+  if (groomerId) {
+    const groomer = await prisma.user.findFirst({ where: { id: groomerId, shopId } })
+    if (!groomer) return NextResponse.json({ error: "Groomer not found" }, { status: 404 })
+  }
+
+  const totalCost: number = round2(body.totalCost ?? 0)
 
   try {
     const record = await prisma.$transaction(async (tx) => {
@@ -54,7 +83,7 @@ export async function POST(req: NextRequest) {
         data: {
           petId: body.petId,
           shopId,
-          groomerId: body.groomerId || null,
+          groomerId,
           services: JSON.stringify(body.services || []),
           products: body.products || null,
           totalCost,
@@ -95,7 +124,8 @@ export async function POST(req: NextRequest) {
       where: { id: pet.customerId },
       select: { lineUserId: true, name: true },
     })
-    console.log(`[GROOMING] pet=${pet.name} customer.lineUserId=${customer?.lineUserId ?? "null"}`)
+    // SEC-7: do not log PII (name / lineUserId). Log only non-identifying state.
+    console.log(`[GROOMING] record created; lineBound=${customer?.lineUserId ? "yes" : "no"}`)
     if (customer?.lineUserId) {
       const shop = await prisma.shop.findUnique({
         where: { id: shopId },
@@ -109,7 +139,6 @@ export async function POST(req: NextRequest) {
         `📋 請點擊以下連結查看本次美容紀錄：`,
         viewUrl,
       ].join("\n")
-      console.log(`[GROOMING] 發送 LINE 推播 → ${customer.lineUserId}`)
       const ok = await sendLineMessage(customer.lineUserId, msg, shop?.lineChannelToken ?? null)
       console.log(`[GROOMING] LINE 推播結果: ${ok ? "成功 ✅" : "失敗 ❌"}`)
     }
