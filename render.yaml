@@ -1,14 +1,26 @@
+# SEC-3: use reviewed Prisma migrations (not `db push`) so prod schema changes
+# are versioned and reversible. `npm ci` installs the exact committed lockfile.
+#
+# ⚠️ ONE-TIME BASELINE for an EXISTING prod DB that was previously created with
+#    `prisma db push`: before the first deploy of this config, run once against
+#    prod so Prisma adopts the current schema as already-applied:
+#       npx prisma migrate resolve --applied 0_init
+#    Otherwise `migrate deploy` will refuse to run on a non-empty DB (P3005).
+#    Also take a pg_dump backup before deploying — there is no automatic backup.
 services:
   - type: web
     name: pet-grooming-saas
     env: node
     region: singapore
-    buildCommand: npm install && npx prisma generate && npm run build
-    startCommand: npx prisma db push && npm start
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && npm start
     envVars:
       - key: DATABASE_URL
         sync: false
       - key: NEXTAUTH_SECRET
+        sync: false
+      # Optional: PEM CA cert if your DB uses a private CA (see lib/prisma.ts)
+      - key: DATABASE_CA_CERT
         sync: false
       - key: AUTH_TRUST_HOST
         value: true

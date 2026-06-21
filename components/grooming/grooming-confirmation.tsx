@@ -8,11 +8,12 @@ import { formatDateTime } from "@/lib/utils"
 
 interface GroomingConfirmationProps {
   groomingId: string
+  viewToken: string
   confirmedAt: string | null
   signatureUrl?: string | null
 }
 
-export function GroomingConfirmation({ groomingId, confirmedAt, signatureUrl }: GroomingConfirmationProps) {
+export function GroomingConfirmation({ groomingId, viewToken, confirmedAt, signatureUrl }: GroomingConfirmationProps) {
   const sigRef = useRef<SignatureCanvas>(null)
   const [submitting, setSubmitting] = useState(false)
   const [confirmed, setConfirmed] = useState<string | null>(confirmedAt)
@@ -31,7 +32,7 @@ export function GroomingConfirmation({ groomingId, confirmedAt, signatureUrl }: 
       const res = await fetch(`/api/grooming/${groomingId}/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signature }),
+        body: JSON.stringify({ signature, token: viewToken }),
       })
       if (!res.ok) {
         const data = await res.json()

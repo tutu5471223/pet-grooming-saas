@@ -1,14 +1,16 @@
 // SECURITY: 多店家隔離 - shopId 由 Session 強制帶入
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth, requireRole } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
+import { round2, MAX_MONEY } from "@/lib/money"
+import { writeAudit } from "@/lib/audit"
 import { startOfMonth, endOfMonth } from "date-fns"
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
-  const shopId = session.user.shopId
   const { searchParams } = new URL(req.url)
   const monthParam = searchParams.get("month")
 
@@ -35,34 +37,53 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const shopId = session.user.shopId
+  const guard = await requireRole(["OWNER"])
+  if (!guard.ok) return guard.response
+  const { shopId, userId } = guard.ctx
 
   try {
     const body = await req.json()
 
     const amount = Number(body.amount)
-    if (!body.date || !body.category || !body.description || !Number.isFinite(amount) || amount < 0) {
+    if (
+      !body.date ||
+      !body.category ||
+      !body.description ||
+      !Number.isFinite(amount) ||
+      amount < 0 ||
+      amount > MAX_MONEY
+    ) {
       return NextResponse.json({ error: "缺少必填欄位或金額無效" }, { status: 400 })
+    }
+    const expenseDate = new Date(body.date)
+    if (Number.isNaN(expenseDate.getTime())) {
+      return NextResponse.json({ error: "日期格式錯誤" }, { status: 400 })
     }
 
     // Verify the user ID from the JWT still exists in the DB (guards against stale sessions)
-    const userExists = session.user.id
-      ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true } })
+    const userExists = userId
+      ? await prisma.user.findUnique({ where: { id: userId }, select: { id: true } })
       : null
 
     const expense = await prisma.expense.create({
       data: {
         shopId,
-        date: new Date(body.date),
-        category: body.category,
-        description: body.description,
-        amount,
-        createdBy: userExists ? session.user.id : null,
+        date: expenseDate,
+        category: String(body.category),
+        description: String(body.description),
+        amount: round2(amount),
+        createdBy: userExists ? userId : null,
       },
       include: { creator: { select: { name: true } } },
+    })
+
+    await writeAudit({
+      shopId,
+      userId,
+      action: "expense.create",
+      resource: "Expense",
+      resourceId: expense.id,
+      detail: { amount: expense.amount, category: expense.category },
     })
 
     return NextResponse.json(expense, { status: 201 })

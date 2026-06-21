@@ -1,29 +1,31 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
+import { readJson, money, shortText, longText, z } from "@/lib/validation"
+import { round2 } from "@/lib/money"
 
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   const { id } = await params
-  const shopId = session.user.shopId
 
   try {
     const room = await prisma.boardingRoom.findFirst({ where: { id, shopId } })
     if (!room) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     const activeBoarding = await prisma.boardingRecord.findFirst({
-      where: { roomId: id, status: "STAYING" },
+      where: { roomId: id, shopId, status: "STAYING" },
     })
     if (activeBoarding) {
       return NextResponse.json({ error: "房間目前有寵物住宿，無法刪除" }, { status: 409 })
     }
 
-    await prisma.boardingRoom.delete({ where: { id } })
+    await prisma.boardingRoom.deleteMany({ where: { id, shopId } })
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error("DELETE /api/rooms/[id]", error)
@@ -31,18 +33,29 @@ export async function DELETE(
   }
 }
 
+const patchSchema = z.object({
+  name: shortText.min(1).optional(),
+  type: shortText.nullish(),
+  dailyRate: money.optional(),
+  status: shortText.optional(),
+  notes: longText.nullish(),
+})
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   const { id } = await params
-  const shopId = session.user.shopId
-  const body = await req.json()
 
   try {
+    const parsed = await readJson(req, patchSchema)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
+
     const room = await prisma.boardingRoom.findFirst({ where: { id, shopId } })
     if (!room) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
@@ -50,10 +63,10 @@ export async function PATCH(
       where: { id },
       data: {
         name: body.name ?? room.name,
-        type: body.type ?? room.type,
-        dailyRate: body.dailyRate ?? room.dailyRate,
+        type: body.type !== undefined ? (body.type ?? null) : room.type,
+        dailyRate: body.dailyRate !== undefined ? round2(body.dailyRate) : room.dailyRate,
         status: body.status ?? room.status,
-        notes: body.notes ?? room.notes,
+        notes: body.notes !== undefined ? (body.notes ?? null) : room.notes,
       },
     })
     return NextResponse.json(updated)

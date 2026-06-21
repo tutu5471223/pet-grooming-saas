@@ -1,16 +1,19 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-04)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
 import { startOfDay, endOfDay, parseISO } from "date-fns"
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
-  const shopId = session.user.shopId
   const dateStr = new URL(req.url).searchParams.get("date")
   const date = dateStr ? parseISO(dateStr) : new Date()
+  if (isNaN(date.getTime())) {
+    return NextResponse.json({ error: "date 參數格式錯誤" }, { status: 400 })
+  }
   const start = startOfDay(date)
   const end = endOfDay(date)
 

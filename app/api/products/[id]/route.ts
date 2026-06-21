@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
+import { round2, MAX_MONEY } from "@/lib/money"
+
+const MAX_STOCK = 1_000_000
 
 export async function GET(
   _req: NextRequest,
@@ -44,12 +47,12 @@ export async function PATCH(
     if (body.category !== undefined) data.category = body.category
     if (body.price !== undefined) {
       const p = Number(body.price)
-      if (!Number.isFinite(p) || p < 0) return NextResponse.json({ error: "請填寫有效售價" }, { status: 400 })
-      data.price = p
+      if (!Number.isFinite(p) || p < 0 || p > MAX_MONEY) return NextResponse.json({ error: "請填寫有效售價" }, { status: 400 })
+      data.price = round2(p)
     }
     if (body.stock !== undefined) {
       const s = Number(body.stock)
-      if (!Number.isInteger(s) || s < 0) return NextResponse.json({ error: "庫存必須為非負整數" }, { status: 400 })
+      if (!Number.isInteger(s) || s < 0 || s > MAX_STOCK) return NextResponse.json({ error: "庫存必須為非負整數" }, { status: 400 })
       data.stock = s
     }
     if (body.unit !== undefined) data.unit = body.unit?.trim() || "個"

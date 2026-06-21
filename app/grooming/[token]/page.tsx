@@ -153,6 +153,7 @@ export default async function GroomingViewPage({ params }: { params: Promise<{ t
         {/* Customer confirmation signature */}
         <GroomingConfirmation
           groomingId={record.id}
+          viewToken={token}
           confirmedAt={record.customerConfirmedAt?.toISOString() ?? null}
           signatureUrl={record.customerSignature ?? null}
         />

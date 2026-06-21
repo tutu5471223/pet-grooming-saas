@@ -1,28 +1,89 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-04)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { writeAudit } from "@/lib/audit"
+import { requireRole } from "@/lib/auth-guard"
+import { readJson, z } from "@/lib/validation"
+
+const patchSchema = z.object({
+  status: z.enum(["PENDING", "PAID"]).optional(),
+  paymentMethod: z.string().trim().max(50).optional(),
+  notes: z.string().trim().max(5000).nullable().optional(),
+})
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // Status-changing PATCH (esp. PENDING -> PAID) is a financial action: OWNER only.
+  const guard = await requireRole(["OWNER"])
+  if (!guard.ok) return guard.response
+  const { shopId, userId } = guard.ctx
 
-  const shopId = session.user.shopId
   const { id } = await params
-  const body = await req.json()
+
+  const parsed = await readJson(req, patchSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
+
+  const markingPaid = body.status === "PAID"
 
   try {
     const existing = await prisma.payment.findFirst({ where: { id, shopId } })
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
+    // Settling CREDIT / MONTHLY_PLAN receivables has accounting side effects
+    // (stored-value deduction, monthly-plan session consumption, points) that
+    // live in the collect endpoint. PATCH must NOT silently bypass them.
+    if (markingPaid && existing.status === "PENDING") {
+      if (existing.billingType === "CREDIT" || existing.billingType === "MONTHLY_PLAN") {
+        return NextResponse.json(
+          {
+            error: "此筆款項需透過收款流程結算（涉及儲值金/包月方案扣抵），請使用收款功能",
+            code: "USE_COLLECT_ENDPOINT",
+          },
+          { status: 422 }
+        )
+      }
+
+      // Atomic PENDING -> PAID for SINGLE receivables only.
+      const flip = await prisma.payment.updateMany({
+        where: { id, shopId, status: "PENDING" },
+        data: {
+          status: "PAID",
+          paidAt: new Date(),
+          paymentMethod: body.paymentMethod ?? existing.paymentMethod ?? undefined,
+          ...(body.notes !== undefined ? { notes: body.notes } : {}),
+        },
+      })
+      if (flip.count !== 1) {
+        // Already processed by another request.
+        return NextResponse.json({ error: "Not found or already paid" }, { status: 409 })
+      }
+
+      const payment = await prisma.payment.findFirst({
+        where: { id, shopId },
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+        },
+      })
+
+      await writeAudit({
+        shopId,
+        userId,
+        action: "MARK_RECEIVABLE_PAID",
+        resource: "Payment",
+        resourceId: id,
+        detail: { amount: existing.amount, billingType: existing.billingType },
+      })
+
+      return NextResponse.json(payment)
+    }
+
+    // Non-status edits (paymentMethod / notes), or no-op status writes that do
+    // not constitute a PENDING -> PAID transition. We never flip PAID -> PENDING here.
     const payment = await prisma.payment.update({
       where: { id },
       data: {
-        status: body.status ?? undefined,
         paymentMethod: body.paymentMethod ?? undefined,
         notes: body.notes !== undefined ? body.notes : undefined,
-        paidAt: body.status === "PAID" ? new Date() : undefined,
       },
       include: {
         customer: { select: { id: true, name: true, phone: true } },
@@ -31,11 +92,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     await writeAudit({
       shopId,
-      userId: session.user.id,
+      userId,
       action: "UPDATE_RECEIVABLE",
       resource: "Payment",
       resourceId: id,
-      detail: { status: body.status, amount: existing.amount },
+      detail: { status: existing.status, amount: existing.amount },
     })
 
     return NextResponse.json(payment)
@@ -46,26 +107,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (session.user.role !== "OWNER") return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const guard = await requireRole(["OWNER"])
+  if (!guard.ok) return guard.response
+  const { shopId, userId } = guard.ctx
 
-  const shopId = session.user.shopId
   const { id } = await params
 
   try {
-    const existing = await prisma.payment.findFirst({ where: { id, shopId, status: "PENDING" } })
-    if (!existing) return NextResponse.json({ error: "Not found or already paid" }, { status: 404 })
-
-    await prisma.payment.delete({ where: { id } })
+    // Atomic, shopId-scoped delete of PENDING receivables only.
+    const deleted = await prisma.payment.deleteMany({ where: { id, shopId, status: "PENDING" } })
+    if (deleted.count !== 1) {
+      return NextResponse.json({ error: "Not found or already paid" }, { status: 404 })
+    }
 
     await writeAudit({
       shopId,
-      userId: session.user.id,
+      userId,
       action: "DELETE_RECEIVABLE",
       resource: "Payment",
       resourceId: id,
-      detail: { amount: existing.amount },
+      detail: { id },
     })
 
     return NextResponse.json({ success: true })

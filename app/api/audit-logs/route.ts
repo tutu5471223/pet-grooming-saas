@@ -1,17 +1,16 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-04)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireRole } from "@/lib/auth-guard"
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (session.user.role !== "OWNER") return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const guard = await requireRole(["OWNER"])
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
-  const shopId = session.user.shopId
   const { searchParams } = new URL(req.url)
-  const resource = searchParams.get("resource")
-  const userId = searchParams.get("userId")
+  const resource = searchParams.get("resource")?.slice(0, 100) || null
+  const userId = searchParams.get("userId")?.slice(0, 100) || null
 
   try {
     const logs = await prisma.auditLog.findMany({

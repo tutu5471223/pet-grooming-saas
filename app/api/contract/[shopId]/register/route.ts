@@ -1,23 +1,37 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { enforceRateLimit, clientIp } from "@/lib/rate-limit"
+import { readJson, z, shortText } from "@/lib/validation"
+import { sanitizeContractHtml } from "@/lib/sanitize"
+
+// data: URLs for signatures can be large; cap to a sane upper bound.
+const MAX_SIGNATURE_LEN = 2_000_000
+
+const registerSchema = z.object({
+  name: shortText.min(1),
+  phone: z.string().trim().regex(/^09\d{8}$/, "手機號碼格式錯誤（09xxxxxxxx）"),
+  petName: shortText.min(1),
+  species: shortText.optional(),
+  breed: shortText.optional(),
+  gender: shortText.optional(),
+  signerName: shortText.optional(),
+  signatureUrl: z.string().min(1).max(MAX_SIGNATURE_LEN),
+})
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ shopId: string }> }
 ) {
   const { shopId } = await params
-  const body = await req.json()
-  const { name, phone, petName, species, breed, gender, signerName, signatureUrl } = body
 
-  if (!name?.trim() || !phone?.trim() || !petName?.trim()) {
-    return NextResponse.json({ error: "請填寫必填欄位（姓名、手機、寵物名稱）" }, { status: 400 })
-  }
-  if (!/^09\d{8}$/.test(phone)) {
-    return NextResponse.json({ error: "手機號碼格式錯誤（09xxxxxxxx）" }, { status: 400 })
-  }
-  if (!signatureUrl) {
-    return NextResponse.json({ error: "缺少簽名資料" }, { status: 400 })
-  }
+  const limited =
+    enforceRateLimit(`contract-register:${clientIp(req)}`, 5, 60_000) ??
+    enforceRateLimit(`contract-register:shop:${shopId}`, 30, 60_000)
+  if (limited) return limited
+
+  const parsed = await readJson(req, registerSchema)
+  if (!parsed.ok) return parsed.response
+  const { name, phone, petName, species, breed, gender, signerName, signatureUrl } = parsed.data
 
   try {
     const shop = await prisma.shop.findUnique({
@@ -46,8 +60,10 @@ export async function POST(
       },
     })
 
-    // Create contract (signed immediately)
-    const contractContent = shop.contractTemplate ?? ""
+    // Create contract (signed immediately).
+    // XSS-1: sanitize the shop-authored template HTML before persisting so that
+    // it is safe to render on public pages via dangerouslySetInnerHTML.
+    const contractContent = sanitizeContractHtml(shop.contractTemplate ?? "")
     await prisma.contract.create({
       data: {
         petId: pet.id,

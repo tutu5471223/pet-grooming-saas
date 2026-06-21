@@ -124,11 +124,12 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
   async function lookupPhone() {
     const err = validatePhone(form.phone)
     if (err) { setPhoneError(err); return }
+    if (!form.name.trim()) { setPhoneError("請先輸入姓名再查詢"); return }
     setLookupLoading(true)
     setLookupResult(null)
     setLookupNotFound(false)
     try {
-      const res = await fetch(`/api/booking/${shopId}/lookup?phone=${encodeURIComponent(form.phone)}`)
+      const res = await fetch(`/api/booking/${shopId}/lookup?phone=${encodeURIComponent(form.phone)}&name=${encodeURIComponent(form.name.trim())}`)
       const data = await res.json()
       if (data.found) {
         setLookupResult(data)
@@ -316,10 +317,25 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
             )}
 
             <div className="space-y-4">
-              {/* Contact info — Task 3: phone lookup */}
+              {/* Contact info — Task 3: phone lookup (requires name verifier) */}
               <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
                 <p className="text-sm font-semibold text-gray-700">聯絡資料</p>
                 <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="name" className="text-xs">姓名 *</Label>
+                    <Input
+                      id="name"
+                      placeholder="王小明"
+                      value={form.name}
+                      onChange={(e) => {
+                        setForm({ ...form, name: e.target.value })
+                        setPhoneError("")
+                        setLookupResult(null)
+                        setLookupNotFound(false)
+                      }}
+                      className="h-9 text-sm"
+                    />
+                  </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="phone" className="text-xs">手機號碼 *</Label>
                     <div className="flex gap-2">
@@ -348,19 +364,10 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
                         {lookupLoading ? "查詢中" : "查詢"}
                       </Button>
                     </div>
+                    <p className="text-xs text-gray-400">輸入姓名與手機號碼後，可查詢您的舊有客人與寵物資料</p>
                     {phoneError && <p className="text-xs text-red-500">{phoneError}</p>}
-                    {lookupNotFound && <p className="text-xs text-gray-500">查無此電話的客人資料，請自行填寫</p>}
+                    {lookupNotFound && <p className="text-xs text-gray-500">查無資料，請自行填寫</p>}
                     {lookupResult && <p className="text-xs text-green-600">✓ 找到客人：{lookupResult.customerName}</p>}
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="name" className="text-xs">姓名 *</Label>
-                    <Input
-                      id="name"
-                      placeholder="王小明"
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className="h-9 text-sm"
-                    />
                   </div>
                 </div>
               </div>

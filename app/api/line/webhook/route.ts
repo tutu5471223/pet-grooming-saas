@@ -58,7 +58,6 @@ async function processEvents(events: LineEvent[]) {
     if (!lineUserId) continue
 
     if (event.type === "follow") {
-      // Welcome message when user follows the official account
       if (event.replyToken) {
         await replyMessage(
           event.replyToken,
@@ -95,7 +94,6 @@ async function processEvents(events: LineEvent[]) {
 }
 
 async function handlePhoneLinking(lineUserId: string, phone: string, replyToken?: string) {
-  // Find customer by phone across all shops
   const customers = await prisma.customer.findMany({
     where: { phone, status: "ACTIVE" },
     include: { shop: { select: { name: true } } },
@@ -108,9 +106,6 @@ async function handlePhoneLinking(lineUserId: string, phone: string, replyToken?
     return
   }
 
-  // Update all matching customers with this LINE User ID
-  // lineUserId → used for push messages; lineId keeps the admin-entered display handle
-  console.log(`[LINE Webhook] 綁定 lineUserId=${lineUserId} phone=${phone} 共 ${customers.length} 筆`)
   await prisma.customer.updateMany({
     where: { phone, status: "ACTIVE" },
     data: { lineUserId },

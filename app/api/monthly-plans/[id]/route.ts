@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth-guard"
+import { requireRole } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
 
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await requireAuth()
+  // Deleting a plan template is a financial-config action → OWNER-only.
+  const guard = await requireRole(["OWNER"])
   if (!guard.ok) return guard.response
   const { shopId } = guard.ctx
   const { id } = await params

@@ -1,15 +1,33 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { nanoid } from "nanoid"
+import { requireAuth } from "@/lib/auth-guard"
+import { readJson, z, shortText } from "@/lib/validation"
+import { sanitizeContractHtml } from "@/lib/sanitize"
+
+const createPetSchema = z.object({
+  customerId: z.string().min(1),
+  name: shortText.min(1),
+  species: shortText.optional(),
+  breed: shortText.nullish(),
+  gender: shortText.optional(),
+  birthday: z.string().optional().nullable(),
+  chipNumber: shortText.nullish(),
+  vaccineRecords: z.unknown().optional(),
+  diseases: shortText.nullish(),
+  allergies: shortText.nullish(),
+  notes: shortText.nullish(),
+})
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
-  const shopId = session.user.shopId
-  const body = await req.json()
+  const parsed = await readJson(req, createPetSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
 
   try {
     // SECURITY: Verify customer belongs to this shop before creating pet.
@@ -48,7 +66,8 @@ export async function POST(req: NextRequest) {
         data: {
           petId: newPet.id,
           shopId,
-          content: shop?.contractTemplate ?? "",
+          // Sanitize shop-authored HTML before storing (defense vs stored XSS).
+          content: sanitizeContractHtml(shop?.contractTemplate ?? ""),
           status: "PENDING",
           token: nanoid(32),
           expiresAt: null,

@@ -2,6 +2,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { readJson, z, shortText } from "@/lib/validation"
+import { parseMoney } from "@/lib/money"
+
+const updatePlanSchema = z.object({
+  name: shortText.min(1).optional(),
+  maxSessions: z.number().finite().optional(),
+  pricePerSession: z.number().finite().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  notes: shortText.nullish(),
+})
 
 export async function PATCH(
   req: NextRequest,
@@ -10,21 +21,68 @@ export async function PATCH(
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const shopId = session.user.shopId
+  const role = session.user.role
   const { id: petId, planId } = await params
 
   try {
+    // Verify the plan belongs to {petId, shopId} before mutating.
     const plan = await prisma.petMonthlyPlan.findFirst({
       where: { id: planId, petId, shopId },
     })
     if (!plan) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const body = await req.json()
+    const parsed = await readJson(req, updatePlanSchema)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
+
+    // Determine whether the request touches financial fields.
+    const wantsMaxSessions =
+      body.maxSessions !== undefined && Math.trunc(body.maxSessions) !== plan.maxSessions
+    let nextPrice: number | null = null
+    if (body.pricePerSession !== undefined) {
+      nextPrice = parseMoney(body.pricePerSession, { allowZero: true })
+      if (nextPrice === null) {
+        return NextResponse.json({ error: "價格無效" }, { status: 400 })
+      }
+    }
+    const wantsPrice = nextPrice !== null && nextPrice !== plan.pricePerSession
+    const touchesFinancial = wantsMaxSessions || wantsPrice
+
+    // FIN-10: price / financial-field changes are OWNER-only.
+    if (touchesFinancial && role !== "OWNER") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    // FIN-10: reject maxSessions below sessions already consumed.
+    const nextMaxSessions =
+      body.maxSessions !== undefined ? Math.trunc(body.maxSessions) : plan.maxSessions
+    if (nextMaxSessions < 1 || nextMaxSessions < plan.usedSessions) {
+      return NextResponse.json(
+        { error: "可用次數不可少於已使用次數" },
+        { status: 400 }
+      )
+    }
+
+    // FIN-10: prevent editing financial fields when a payment is already PAID
+    // (best effort — avoids changing the value of an already-settled plan).
+    if (touchesFinancial) {
+      const paidCount = await prisma.payment.count({
+        where: { monthlyPlanId: planId, shopId, status: "PAID" },
+      })
+      if (paidCount > 0) {
+        return NextResponse.json(
+          { error: "此方案已有付款紀錄，無法修改金額或次數" },
+          { status: 409 }
+        )
+      }
+    }
+
     const updated = await prisma.petMonthlyPlan.update({
       where: { id: planId },
       data: {
         name: body.name ?? plan.name,
-        maxSessions: body.maxSessions !== undefined ? Number(body.maxSessions) : plan.maxSessions,
-        pricePerSession: body.pricePerSession !== undefined ? Number(body.pricePerSession) : plan.pricePerSession,
+        maxSessions: nextMaxSessions,
+        pricePerSession: nextPrice !== null ? nextPrice : plan.pricePerSession,
         startDate: body.startDate ? new Date(body.startDate) : plan.startDate,
         endDate: body.endDate ? new Date(body.endDate) : plan.endDate,
         notes: body.notes !== undefined ? body.notes : plan.notes,

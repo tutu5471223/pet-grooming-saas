@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
+import { readJson, shortText, longText, z } from "@/lib/validation"
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   const { id: boardingRecordId } = await params
-  const shopId = session.user.shopId
 
   try {
     const record = await prisma.boardingRecord.findFirst({ where: { id: boardingRecordId, shopId } })
@@ -26,22 +27,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 }
 
+const logSchema = z.object({
+  note: longText.nullish(),
+  condition: shortText.optional(),
+})
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId, userId } = guard.ctx
 
   const { id: boardingRecordId } = await params
-  const shopId = session.user.shopId
 
   try {
-    const body = await req.json()
+    const parsed = await readJson(req, logSchema)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
 
     const record = await prisma.boardingRecord.findFirst({ where: { id: boardingRecordId, shopId } })
     if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     // 先驗證 session user 是否存在於 DB（避免 JWT 過期/重建後 FK 違反）
-    const staff = session.user.id
-      ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } })
+    const staff = userId
+      ? await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
       : null
 
     const log = await prisma.boardingDailyLog.create({
@@ -51,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         date: new Date(),
         note: body.note || null,
         condition: body.condition || "良好",
-        createdBy: staff ? session.user.id : null,
+        createdBy: staff ? userId : null,
       },
     })
 

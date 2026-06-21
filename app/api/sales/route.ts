@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
+import { readJson, z, positiveInt } from "@/lib/validation"
+import { round2, sumMoney } from "@/lib/money"
 import { startOfDay, endOfDay, parseISO } from "date-fns"
 
 export async function GET(req: NextRequest) {
@@ -42,31 +44,35 @@ export async function POST(req: NextRequest) {
   const { shopId } = guard.ctx
 
   try {
-    const body = await req.json()
-    const { customerId, items, note } = body as {
-      customerId?: string | null
-      note?: string
-      items: { productId: string; qty: number; price: number }[]
-    }
+    // NON-strict schema: validate known fields' types/bounds, allow extra keys.
+    // `price` is accepted but treated only as a display hint — never trusted.
+    const schema = z.object({
+      customerId: z.string().optional().nullable(),
+      note: z.string().optional().nullable(),
+      items: z
+        .array(
+          z.object({
+            productId: z.string().min(1),
+            qty: positiveInt,
+            price: z.number().optional(),
+          })
+        )
+        .min(1, "購物車不能為空"),
+    })
+    const parsed = await readJson(req, schema)
+    if (!parsed.ok) return parsed.response
+    const { customerId, items, note } = parsed.data
 
-    if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ error: "購物車不能為空" }, { status: 400 })
-    }
-    for (const item of items) {
-      if (!item.productId || item.qty < 1 || !Number.isFinite(item.price)) {
-        return NextResponse.json({ error: "商品資料有誤" }, { status: 400 })
-      }
-    }
-
-    // Verify all products belong to this shop
+    // Verify all products belong to this shop (also yields authoritative prices)
     const productIds = items.map((i) => i.productId)
     const products = await prisma.product.findMany({
       where: { id: { in: productIds }, shopId },
-      select: { id: true, stock: true, name: true },
+      select: { id: true, stock: true, name: true, price: true },
     })
-    if (products.length !== productIds.length) {
+    if (products.length !== new Set(productIds).size) {
       return NextResponse.json({ error: "部分商品不存在" }, { status: 400 })
     }
+    const priceById = new Map(products.map((p) => [p.id, p.price]))
 
     // Optional: verify customer belongs to shop
     if (customerId) {
@@ -74,7 +80,18 @@ export async function POST(req: NextRequest) {
       if (!customer) return NextResponse.json({ error: "找不到此客人" }, { status: 404 })
     }
 
-    const total = items.reduce((sum, i) => sum + i.price * i.qty, 0)
+    // Recompute every line price server-side from authoritative Product.price.
+    // Client-supplied price is ignored entirely.
+    const lineItems = items.map((i) => {
+      const unitPrice = round2(priceById.get(i.productId) ?? 0)
+      return {
+        productId: i.productId,
+        qty: i.qty,
+        price: unitPrice,
+        lineTotal: round2(unitPrice * i.qty),
+      }
+    })
+    const total = sumMoney(lineItems.map((l) => l.lineTotal))
 
     const sale = await prisma.$transaction(async (tx) => {
       const newSale = await tx.sale.create({
@@ -84,7 +101,7 @@ export async function POST(req: NextRequest) {
           total,
           note: note?.trim() || null,
           items: {
-            create: items.map((i) => ({
+            create: lineItems.map((i) => ({
               productId: i.productId,
               qty: i.qty,
               price: i.price,
@@ -97,10 +114,10 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      // Decrement stock for each product
-      for (const item of items) {
-        await tx.product.update({
-          where: { id: item.productId },
+      // Decrement stock for each product (scoped by shopId)
+      for (const item of lineItems) {
+        await tx.product.updateMany({
+          where: { id: item.productId, shopId },
           data: { stock: { decrement: item.qty } },
         })
       }

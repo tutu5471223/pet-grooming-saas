@@ -1,23 +1,36 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-04)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
+import { readJson, money, shortText, longText, positiveInt, z } from "@/lib/validation"
+import { round2 } from "@/lib/money"
+
+const patchSchema = z.object({
+  name: shortText.min(1).optional(),
+  category: shortText.nullish(),
+  price: money.optional(),
+  duration: positiveInt.nullish(),
+  isActive: z.boolean().optional(),
+})
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   try {
     const { id } = await params
-    const body = await req.json()
+    const parsed = await readJson(req, patchSchema)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
 
     const service = await prisma.service.updateMany({
-      where: { id, shopId: session.user.shopId },
+      where: { id, shopId },
       data: {
         name: body.name ?? undefined,
         category: body.category !== undefined ? (body.category || null) : undefined,
-        price: body.price !== undefined ? Number(body.price) : undefined,
-        duration: body.duration !== undefined ? (body.duration ? Number(body.duration) : null) : undefined,
+        price: body.price !== undefined ? round2(body.price) : undefined,
+        duration: body.duration !== undefined ? (body.duration ?? null) : undefined,
         isActive: body.isActive !== undefined ? body.isActive : undefined,
       },
     })
@@ -29,13 +42,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   try {
     const { id } = await params
     await prisma.service.updateMany({
-      where: { id, shopId: session.user.shopId },
+      where: { id, shopId },
       data: { isActive: false },
     })
     return NextResponse.json({ success: true })

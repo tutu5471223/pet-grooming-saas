@@ -3,14 +3,35 @@ import { PrismaPg } from "@prisma/adapter-pg"
 import { Pool } from "pg"
 import { PrismaClient } from "../app/generated/prisma/client"
 import bcrypt from "bcryptjs"
+import { randomBytes } from "crypto"
 
 const url = process.env.DATABASE_URL!
-const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } })
+
+// SEC-2: refuse to run against production unless explicitly allowed.
+const isRenderProd = url.includes("render.com") || url.includes(".internal")
+if ((isRenderProd || process.env.NODE_ENV === "production") && process.env.ALLOW_SEED !== "true") {
+  console.error("❌ 拒絕在正式環境執行 seed-data。需設定 ALLOW_SEED=true。")
+  process.exit(1)
+}
+
+const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.startsWith("file:")
+const pool = new Pool({ connectionString: url, ssl: isLocal ? undefined : { rejectUnauthorized: true } })
 const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter } as any)
 
 const SHOP_ID = "Tutu123456"
 const SYSTEM_SHOP_ID = "system"
+
+// SEC-1: passwords from env or generated + printed once; never hardcoded.
+const generatedCreds: string[] = []
+function seedPassword(envKey: string, label: string): string {
+  const fromEnv = process.env[envKey]
+  if (fromEnv) return fromEnv
+  const pw = randomBytes(12).toString("base64url")
+  generatedCreds.push(`  ${label.padEnd(28)} ${pw}   (env: ${envKey})`)
+  return pw
+}
+const OWNER_EMAIL = process.env.SEED_OWNER_EMAIL ?? "owner@example.com"
 
 function daysAgo(n: number) {
   const d = new Date()
@@ -48,7 +69,7 @@ async function main() {
     update: {},
     create: { id: SYSTEM_SHOP_ID, name: "系統管理" },
   })
-  const systemPw = await bcrypt.hash("superadmin2026", 10)
+  const systemPw = await bcrypt.hash(seedPassword("SEED_SUPERADMIN_PASSWORD", "系統超管 superadmin@system.com"), 12)
   await prisma.user.upsert({
     where: { email_shopId: { email: "superadmin@system.com", shopId: SYSTEM_SHOP_ID } },
     update: {},
@@ -74,17 +95,17 @@ async function main() {
 
   // ── 帳號 (upsert) ─────────────────────────────────────────────
   console.log("👤 確認帳號...")
-  const ownerPw = await bcrypt.hash("Tutu880223", 12)
+  const ownerPw = await bcrypt.hash(seedPassword("SEED_OWNER_PASSWORD", `店主 ${OWNER_EMAIL}`), 12)
   const owner = await prisma.user.upsert({
-    where: { email_shopId: { email: "tutu5471223@gmail.com", shopId: SHOP_ID } },
+    where: { email_shopId: { email: OWNER_EMAIL, shopId: SHOP_ID } },
     update: { password: ownerPw, isSuperAdmin: true, isActive: true, role: "OWNER" },
     create: {
-      name: "Tutu 老闆", email: "tutu5471223@gmail.com", password: ownerPw,
+      name: "Tutu 老闆", email: OWNER_EMAIL, password: ownerPw,
       role: "OWNER", shopId: SHOP_ID, isSuperAdmin: true, isActive: true,
     },
   })
 
-  const staffPw = await bcrypt.hash("staff123", 10)
+  const staffPw = await bcrypt.hash(seedPassword("SEED_STAFF_PASSWORD", "美容師 (lily/jason)"), 10)
   const lily = await prisma.user.upsert({
     where: { email_shopId: { email: "lily@maomao.com", shopId: SHOP_ID } },
     update: { isActive: true },
@@ -307,8 +328,13 @@ async function main() {
   console.log("\n✅ 測試資料建立完成！")
   console.log("\n🔐 登入資訊:")
   console.log(`  Shop ID  : ${SHOP_ID}`)
-  console.log(`  Email    : tutu5471223@gmail.com`)
-  console.log(`  密碼     : Tutu880223`)
+  console.log(`  Email    : ${OWNER_EMAIL}`)
+  if (generatedCreds.length > 0) {
+    console.log("\n🔑 本次自動產生的密碼（請立即記下，不會再顯示）:")
+    for (const line of generatedCreds) console.log(line)
+  } else {
+    console.log("  （密碼來自 SEED_*_PASSWORD 環境變數）")
+  }
   console.log("\n📊 建立摘要:")
   console.log(`  客人: 王小明(${c1.id.slice(0,8)}), 陳美華(${c2.id.slice(0,8)}), 李大同(${c3.id.slice(0,8)})`)
   console.log(`  寵物: 小白/橘子/咪咪/奶油/大壯`)
