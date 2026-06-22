@@ -11,6 +11,7 @@ import { MemberLevelManager } from "@/components/settings/member-level-manager"
 import { StaffManager } from "@/components/settings/staff-manager"
 import { MonthlyPlanManager } from "@/components/settings/monthly-plan-manager"
 import { BookingLink } from "@/components/settings/booking-link"
+import { MenuLink } from "@/components/settings/menu-link"
 import { ReminderSettings } from "@/components/settings/reminder-settings"
 import { SubscriptionInfo } from "@/components/settings/subscription-info"
 import { LineSettings } from "@/components/settings/line-settings"
@@ -129,7 +130,10 @@ export default async function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="booking" className="mt-4">
-          <BookingLink shopId={shopId} baseUrl={baseUrl} />
+          <div className="space-y-4">
+            <BookingLink shopId={shopId} baseUrl={baseUrl} />
+            <MenuLink shopId={shopId} baseUrl={baseUrl} />
+          </div>
         </TabsContent>
 
         <TabsContent value="reminder" className="mt-4">
