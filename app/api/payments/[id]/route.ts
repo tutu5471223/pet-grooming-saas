@@ -46,8 +46,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const nextStatus = wantsStatusChange ? body.status! : payment.status
 
-    const updated = await prisma.payment.update({
-      where: { id },
+    await prisma.payment.updateMany({
+      where: { id, shopId },
       data: {
         status: nextStatus,
         paymentMethod: body.paymentMethod ?? payment.paymentMethod,
@@ -55,6 +55,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         paidAt: body.paidAt ? new Date(body.paidAt) : payment.paidAt,
       },
     })
+    const updated = await prisma.payment.findFirst({ where: { id, shopId } })
 
     await writeAudit({
       shopId,

@@ -52,8 +52,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "預約時間格式錯誤" }, { status: 400 })
     }
 
-    await prisma.appointment.update({
-      where: { id },
+    await prisma.appointment.updateMany({
+      where: { id, shopId },
       data: {
         ...(body.status !== undefined && { status: body.status }),
         ...(body.staffId !== undefined && { staffId: body.staffId ?? null }),
@@ -69,15 +69,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Auto-deduct monthly plan session on first completion
     if (body.status === "COMPLETED" && existing.status !== "COMPLETED" && existing.petMonthlyPlanId) {
       try {
-        await prisma.petMonthlyPlan.update({
-          where: { id: existing.petMonthlyPlanId },
+        await prisma.petMonthlyPlan.updateMany({
+          where: { id: existing.petMonthlyPlanId, shopId },
           data: { usedSessions: { increment: 1 } },
         })
       } catch { /* plan may have been deleted */ }
     }
 
     const updated = await prisma.appointment.findFirst({
-      where: { id },
+      where: { id, shopId },
       include: {
         pet: { include: { customer: true, contract: true } },
         staff: true,
