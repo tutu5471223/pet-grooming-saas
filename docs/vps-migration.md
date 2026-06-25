@@ -245,8 +245,8 @@ pm2 stop pet-grooming         # 停止
 
 | 工作 | URL（舊：Render）| URL（新：VPS）|
 |---|---|---|
-| 預約提醒 | `https://pet-grooming-saas.onrender.com/api/cron/reminder` | `https://yourdomain.com/api/cron/reminder` |
-| 預約提醒（備用）| `https://pet-grooming-saas.onrender.com/api/cron/appointment-reminder` | `https://yourdomain.com/api/cron/appointment-reminder` |
+| 預約提醒 | `https://petos71.com/api/cron/reminder` | `https://yourdomain.com/api/cron/reminder` |
+| 預約提醒（備用）| `https://petos71.com/api/cron/appointment-reminder` | `https://yourdomain.com/api/cron/appointment-reminder` |
 
 Header 保持不變：`Authorization: Bearer <CRON_SECRET>`
 
