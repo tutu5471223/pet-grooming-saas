@@ -56,6 +56,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     })
     const updated = await prisma.payment.findFirst({ where: { id, shopId } })
+    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     await writeAudit({
       shopId,
