@@ -430,8 +430,8 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
                   <p className="text-sm font-semibold text-gray-700">偏好時間</p>
                   <p className="text-xs text-gray-400 mt-0.5">僅供參考，店家將與您確認實際時間，非即時預約</p>
                 </div>
-                {/* 日期 + 第一時間：手機並排（各欄夠寬），桌機同樣並排 */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* 日期 + 第一時間：手機單欄，sm 以上並排 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="preferredDate" className="text-xs">偏好日期</Label>
                     <Input
