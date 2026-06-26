@@ -430,6 +430,7 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
                   <p className="text-sm font-semibold text-gray-700">偏好時間</p>
                   <p className="text-xs text-gray-400 mt-0.5">僅供參考，店家將與您確認實際時間，非即時預約</p>
                 </div>
+                {/* 日期 + 第一時間：手機並排（各欄夠寬），桌機同樣並排 */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="preferredDate" className="text-xs">偏好日期</Label>
@@ -439,21 +440,24 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
                       min={today}
                       value={form.preferredDate}
                       onChange={(e) => setForm({ ...form, preferredDate: e.target.value })}
-                      className="h-9 text-sm"
+                      className="h-9 text-sm w-full"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="preferredTime" className="text-xs">第一選擇時間 *</Label>
+                    <Label htmlFor="preferredTime" className="text-xs">第一時間</Label>
                     <select
                       id="preferredTime"
                       value={form.preferredTime}
                       onChange={(e) => setForm({ ...form, preferredTime: e.target.value })}
-                      className="w-full h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full h-9 rounded-lg border border-gray-300 bg-white px-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     >
                       <option value="">不指定</option>
                       {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
+                </div>
+                {/* 第二、第三選擇：手機全寬單欄，sm 以上並排 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="preferredTime2" className="text-xs">第二選擇時間（選填）</Label>
                     <select
