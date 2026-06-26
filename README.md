@@ -200,3 +200,5 @@ npx prisma generate     # 重新生成 Prisma Client
 ## License
 
 Private — All rights reserved.
+
+# 自動部署測試
