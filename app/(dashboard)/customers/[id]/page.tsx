@@ -106,6 +106,7 @@ export default async function CustomerDetailPage({
                 <Phone className="h-3.5 w-3.5" /> {customer.phone}
               </span>
               {customer.lineId && <span className="text-green-600">LINE: {customer.lineId}</span>}
+              {customer.idNumber && <span>身分證：{customer.idNumber}</span>}
               {customer.address && (
                 <span className="flex items-center gap-1 min-w-0">
                   <MapPin className="h-3.5 w-3.5 shrink-0" />

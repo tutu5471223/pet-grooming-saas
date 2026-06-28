@@ -23,6 +23,7 @@ interface Customer {
   name: string
   phone: string
   lineId: string | null
+  idNumber: string | null
   address: string | null
   notes: string | null
   memberLevelId: string | null
@@ -49,6 +50,7 @@ export default function CustomerEditPage({
     name: "",
     phone: "",
     lineId: "",
+    idNumber: "",
     address: "",
     notes: "",
     memberLevelId: "",
@@ -71,6 +73,7 @@ export default function CustomerEditPage({
           name: data.name,
           phone: data.phone,
           lineId: data.lineId ?? "",
+          idNumber: data.idNumber ?? "",
           address: data.address ?? "",
           notes: data.notes ?? "",
           memberLevelId: data.memberLevelId ?? "",
@@ -92,6 +95,7 @@ export default function CustomerEditPage({
           name: form.name,
           phone: form.phone,
           lineId: form.lineId || null,
+          idNumber: form.idNumber || null,
           address: form.address || null,
           notes: form.notes || null,
           memberLevelId: form.memberLevelId || null,
@@ -182,6 +186,27 @@ export default function CustomerEditPage({
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="idNumber">身分證字號</Label>
+                <Input
+                  id="idNumber"
+                  placeholder="選填"
+                  value={form.idNumber}
+                  onChange={(e) => setForm({ ...form, idNumber: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="address">地址</Label>
+                <Input
+                  id="address"
+                  placeholder="選填"
+                  value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                />
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="memberLevelId">會員等級（手動指定）</Label>
               <select
@@ -198,16 +223,6 @@ export default function CustomerEditPage({
                 ))}
               </select>
               <p className="text-xs text-gray-400">手動指定等級後，系統自動升等規則仍會運作，下次同步時可能被覆蓋</p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="address">地址</Label>
-              <Input
-                id="address"
-                placeholder="選填"
-                value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
-              />
             </div>
 
             <div className="space-y-1.5">

@@ -74,7 +74,7 @@ function IssueRow({
 export function ContractRegisterClient({ shopId, shopName, contractTemplate }: Props) {
   const [step, setStep] = useState(1)
   const [form, setForm] = useState({
-    name: "", phone: "", petName: "", species: "犬", breed: "", gender: "UNKNOWN",
+    name: "", phone: "", idNumber: "", address: "", petName: "", species: "犬", breed: "", gender: "UNKNOWN",
   })
   const [health, setHealth] = useState<HealthState>(EMPTY_HEALTH)
   const [agreed, setAgreed] = useState(false)
@@ -133,6 +133,8 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
         body: JSON.stringify({
           name: form.name.trim(),
           phone: form.phone,
+          idNumber: form.idNumber.trim() || null,
+          address: form.address.trim() || null,
           petName: form.petName.trim(),
           species: form.species,
           breed: form.breed.trim() || null,
@@ -215,6 +217,16 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
                   <Label htmlFor="phone" className="text-xs">手機號碼 *</Label>
                   <Input id="phone" type="tel" placeholder="0912345678" value={form.phone}
                     onChange={(e) => setField("phone", e.target.value)} className="h-10" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="idNumber" className="text-xs">身分證字號（選填）</Label>
+                  <Input id="idNumber" placeholder="A123456789" value={form.idNumber}
+                    onChange={(e) => setField("idNumber", e.target.value)} className="h-10" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="address" className="text-xs">地址（選填）</Label>
+                  <Input id="address" placeholder="台北市..." value={form.address}
+                    onChange={(e) => setField("address", e.target.value)} className="h-10" />
                 </div>
               </div>
             </div>

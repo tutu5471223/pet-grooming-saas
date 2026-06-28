@@ -10,6 +10,8 @@ const MAX_SIGNATURE_LEN = 2_000_000
 const registerSchema = z.object({
   name: shortText.min(1),
   phone: z.string().trim().regex(/^09\d{8}$/, "手機號碼格式錯誤（09xxxxxxxx）"),
+  idNumber: shortText.optional().nullable(),
+  address: shortText.optional().nullable(),
   petName: shortText.min(1),
   species: shortText.optional(),
   breed: shortText.optional(),
@@ -62,7 +64,7 @@ export async function POST(
   const parsed = await readJson(req, registerSchema)
   if (!parsed.ok) return parsed.response
   const {
-    name, phone, petName, species, breed, gender, signerName, signatureUrl,
+    name, phone, idNumber, address, petName, species, breed, gender, signerName, signatureUrl,
     personality, boneIssue, boneNote, skinIssue, skinNote, earIssue, earNote, eyeIssue, eyeNote,
     heartDisease, boneDisease, skinDisease, epilepsy, diabetes, surgeryHistory, surgeryNote, otherDisease,
     bathFrequency, groomFrequency, blowDryerFear, afterGroomHandle,
@@ -80,8 +82,25 @@ export async function POST(
     let customer = await prisma.customer.findFirst({ where: { phone, shopId } })
     if (!customer) {
       customer = await prisma.customer.create({
-        data: { name: name.trim(), phone, shopId },
+        data: {
+          name: name.trim(),
+          phone,
+          shopId,
+          idNumber: idNumber?.trim() || null,
+          address: address?.trim() || null,
+        },
       })
+    } else {
+      // Update idNumber/address if provided and not already set
+      if ((idNumber && !customer.idNumber) || (address && !customer.address)) {
+        customer = await prisma.customer.update({
+          where: { id: customer.id },
+          data: {
+            idNumber: idNumber?.trim() || customer.idNumber,
+            address: address?.trim() || customer.address,
+          },
+        })
+      }
     }
 
     // Create pet

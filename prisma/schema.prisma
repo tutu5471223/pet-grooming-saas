@@ -76,6 +76,7 @@ model Customer {
   phone                String
   lineId               String?
   lineUserId           String?
+  idNumber             String?
   address              String?
   shopId               String
   shop                 Shop         @relation(fields: [shopId], references: [id])
