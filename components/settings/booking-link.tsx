@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { Copy, Check } from "lucide-react"
+import { useRef, useState } from "react"
+import { Copy, Check, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { QRCodeSVG } from "qrcode.react"
+import { QRCodeSVG, QRCodeCanvas } from "qrcode.react"
 
 interface BookingLinkProps {
   shopId: string
@@ -14,6 +14,17 @@ interface BookingLinkProps {
 export function BookingLink({ shopId, baseUrl }: BookingLinkProps) {
   const [copied, setCopied] = useState(false)
   const [copiedContract, setCopiedContract] = useState(false)
+  const contractQrRef = useRef<HTMLDivElement>(null)
+
+  function handleDownloadContractQR() {
+    const canvas = contractQrRef.current?.querySelector("canvas")
+    if (!canvas) return
+    const url = canvas.toDataURL("image/png")
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "contract-qrcode.png"
+    a.click()
+  }
   const bookingUrl = `${baseUrl}/booking/${shopId}`
   const contractUrl = `${baseUrl}/contract/${shopId}`
   const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(bookingUrl)}`
@@ -116,9 +127,13 @@ export function BookingLink({ shopId, baseUrl }: BookingLinkProps) {
 
         <div className="flex flex-col items-center gap-2 pt-3 border-t border-gray-100">
           <p className="text-xs text-gray-500">或掃描 QR Code 開啟合約建檔頁面</p>
-          <div className="rounded-xl border border-gray-200 bg-white p-3">
-            <QRCodeSVG value={contractUrl} size={160} />
+          <div ref={contractQrRef} className="rounded-xl border border-gray-200 bg-white p-3">
+            <QRCodeCanvas value={contractUrl} size={160} />
           </div>
+          <Button variant="outline" size="sm" onClick={handleDownloadContractQR}>
+            <Download className="h-4 w-4" />
+            下載 QR Code
+          </Button>
         </div>
       </CardContent>
     </Card>
