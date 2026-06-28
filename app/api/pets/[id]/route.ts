@@ -13,9 +13,36 @@ const updatePetSchema = z.object({
   birthday: z.string().optional().nullable(),
   chipNumber: shortText.nullish(),
   vaccineRecords: z.unknown().optional(),
-  diseases: shortText.nullish(),
-  allergies: shortText.nullish(),
   notes: shortText.nullish(),
+  // 個性標籤
+  personality: z.array(z.string()).optional(),
+  // 身體狀況
+  boneIssue: z.boolean().optional(),
+  boneNote: shortText.nullish(),
+  skinIssue: z.boolean().optional(),
+  skinNote: shortText.nullish(),
+  earIssue: z.boolean().optional(),
+  earNote: shortText.nullish(),
+  eyeIssue: z.boolean().optional(),
+  eyeNote: shortText.nullish(),
+  // 病史分類
+  heartDisease: z.boolean().optional(),
+  boneDisease: z.boolean().optional(),
+  skinDisease: z.boolean().optional(),
+  epilepsy: z.boolean().optional(),
+  diabetes: z.boolean().optional(),
+  surgeryHistory: z.boolean().optional(),
+  surgeryNote: shortText.nullish(),
+  otherDisease: shortText.nullish(),
+  // 美容習慣
+  bathFrequency: shortText.nullish(),
+  groomFrequency: shortText.nullish(),
+  blowDryerFear: shortText.nullish(),
+  // 同意事項
+  afterGroomHandle: shortText.nullish(),
+  consentPhoto: z.boolean().optional(),
+  consentSnack: z.boolean().optional(),
+  snackAllergy: shortText.nullish(),
 })
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -76,9 +103,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.birthday !== undefined) data.birthday = body.birthday ? new Date(body.birthday) : null
   if (body.chipNumber !== undefined) data.chipNumber = body.chipNumber || null
   if (body.vaccineRecords !== undefined) data.vaccineRecords = body.vaccineRecords ? JSON.stringify(body.vaccineRecords) : null
-  if (body.diseases !== undefined) data.diseases = body.diseases || null
-  if (body.allergies !== undefined) data.allergies = body.allergies || null
   if (body.notes !== undefined) data.notes = body.notes || null
+  if (body.personality !== undefined) data.personality = body.personality ?? []
+  if (body.boneIssue !== undefined) data.boneIssue = body.boneIssue
+  if (body.boneNote !== undefined) data.boneNote = body.boneNote || null
+  if (body.skinIssue !== undefined) data.skinIssue = body.skinIssue
+  if (body.skinNote !== undefined) data.skinNote = body.skinNote || null
+  if (body.earIssue !== undefined) data.earIssue = body.earIssue
+  if (body.earNote !== undefined) data.earNote = body.earNote || null
+  if (body.eyeIssue !== undefined) data.eyeIssue = body.eyeIssue
+  if (body.eyeNote !== undefined) data.eyeNote = body.eyeNote || null
+  if (body.heartDisease !== undefined) data.heartDisease = body.heartDisease
+  if (body.boneDisease !== undefined) data.boneDisease = body.boneDisease
+  if (body.skinDisease !== undefined) data.skinDisease = body.skinDisease
+  if (body.epilepsy !== undefined) data.epilepsy = body.epilepsy
+  if (body.diabetes !== undefined) data.diabetes = body.diabetes
+  if (body.surgeryHistory !== undefined) data.surgeryHistory = body.surgeryHistory
+  if (body.surgeryNote !== undefined) data.surgeryNote = body.surgeryNote || null
+  if (body.otherDisease !== undefined) data.otherDisease = body.otherDisease || null
+  if (body.bathFrequency !== undefined) data.bathFrequency = body.bathFrequency || null
+  if (body.groomFrequency !== undefined) data.groomFrequency = body.groomFrequency || null
+  if (body.blowDryerFear !== undefined) data.blowDryerFear = body.blowDryerFear || null
+  if (body.afterGroomHandle !== undefined) data.afterGroomHandle = body.afterGroomHandle || null
+  if (body.consentPhoto !== undefined) data.consentPhoto = body.consentPhoto
+  if (body.consentSnack !== undefined) data.consentSnack = body.consentSnack
+  if (body.snackAllergy !== undefined) data.snackAllergy = body.snackAllergy || null
 
   try {
     const pet = await prisma.pet.updateMany({

@@ -263,7 +263,7 @@ async function main() {
         { id: "v1", name: "狂犬病疫苗", date: "2025-01-15", nextDate: "2026-01-15", clinic: "大安動物醫院" },
         { id: "v2", name: "五合一疫苗", date: "2025-01-15", nextDate: "2026-01-15", clinic: "大安動物醫院" },
       ]),
-      allergies: "對某些洗毛精敏感，請使用低敏配方",
+      skinIssue: true, skinNote: "對某些洗毛精敏感，請使用低敏配方",
       customerId: c1.id, shopId: SHOP_ID,
     },
   })
@@ -355,7 +355,7 @@ async function main() {
   const p6 = await prisma.pet.create({
     data: {
       name: "大壯", species: "犬", breed: "黃金獵犬", gender: "MALE",
-      birthday: new Date("2018-12-25"), diseases: "輕微關節問題",
+      birthday: new Date("2018-12-25"), boneIssue: true, boneNote: "輕微關節問題",
       customerId: c3.id, shopId: SHOP_ID,
     },
   })

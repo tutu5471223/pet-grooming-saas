@@ -111,10 +111,42 @@ model Pet {
   gender         String    @default("UNKNOWN")
   birthday       DateTime?
   chipNumber     String?
-  vaccineRecords String?
-  diseases       String?
-  allergies      String?
-  photoUrl       String?
+  vaccineRecords   String?
+  photoUrl         String?
+
+  // 個性標籤
+  personality      String[]
+
+  // 身體狀況
+  boneIssue        Boolean  @default(false)
+  boneNote         String?
+  skinIssue        Boolean  @default(false)
+  skinNote         String?
+  earIssue         Boolean  @default(false)
+  earNote          String?
+  eyeIssue         Boolean  @default(false)
+  eyeNote          String?
+
+  // 病史分類
+  heartDisease     Boolean  @default(false)
+  boneDisease      Boolean  @default(false)
+  skinDisease      Boolean  @default(false)
+  epilepsy         Boolean  @default(false)
+  diabetes         Boolean  @default(false)
+  surgeryHistory   Boolean  @default(false)
+  surgeryNote      String?
+  otherDisease     String?
+
+  // 美容習慣
+  bathFrequency    String?
+  groomFrequency   String?
+  blowDryerFear    String?
+
+  // 主人同意事項
+  afterGroomHandle String?
+  consentPhoto     Boolean  @default(false)
+  consentSnack     Boolean  @default(false)
+  snackAllergy     String?
   customerId     String
   customer       Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   shopId         String

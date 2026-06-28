@@ -19,16 +19,64 @@ const GENDER_OPTIONS = [
   { value: "UNKNOWN", label: "未知" },
 ]
 
+const PERSONALITY_OPTIONS = ["黏人", "膽小", "親人", "活潑", "易怒", "咬人", "討厭狗狗", "討厭貓咪"]
+const BLOW_DRYER_OPTIONS = ["完全接受", "有點怕", "非常怕"]
+const AFTER_GROOM_OPTIONS = ["自由落地", "桌上限制活動", "圍片限制活動", "回到自己外出籠", "以上皆可"]
+
+const EMPTY_HEALTH = {
+  personality: [] as string[],
+  boneIssue: false, boneNote: "",
+  skinIssue: false, skinNote: "",
+  earIssue: false, earNote: "",
+  eyeIssue: false, eyeNote: "",
+  heartDisease: false, boneDisease: false, skinDisease: false,
+  epilepsy: false, diabetes: false,
+  surgeryHistory: false, surgeryNote: "",
+  otherDisease: "",
+  bathFrequency: "", groomFrequency: "", blowDryerFear: "",
+  afterGroomHandle: "", consentPhoto: false, consentSnack: false, snackAllergy: "",
+}
+
+type HealthState = typeof EMPTY_HEALTH
+
+function ToggleChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+        active ? "border-indigo-500 bg-indigo-600 text-white" : "border-gray-200 text-gray-600 hover:border-indigo-300"
+      }`}>
+      {label}
+    </button>
+  )
+}
+
+function IssueRow({
+  label, active, note, onToggle, onNote,
+}: { label: string; active: boolean; note: string; onToggle: () => void; onNote: (v: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={onToggle}
+          className={`rounded-full border px-3 py-0.5 text-xs font-medium transition-colors ${
+            active ? "border-red-400 bg-red-500 text-white" : "border-gray-200 text-gray-500"
+          }`}>
+          {active ? "有問題" : "正常"}
+        </button>
+        <span className="text-sm text-gray-700">{label}</span>
+      </div>
+      {active && (
+        <Input placeholder="說明..." value={note} onChange={(e) => onNote(e.target.value)} className="h-9 text-sm" />
+      )}
+    </div>
+  )
+}
+
 export function ContractRegisterClient({ shopId, shopName, contractTemplate }: Props) {
   const [step, setStep] = useState(1)
   const [form, setForm] = useState({
-    name: "",
-    phone: "",
-    petName: "",
-    species: "犬",
-    breed: "",
-    gender: "UNKNOWN",
+    name: "", phone: "", petName: "", species: "犬", breed: "", gender: "UNKNOWN",
   })
+  const [health, setHealth] = useState<HealthState>(EMPTY_HEALTH)
   const [agreed, setAgreed] = useState(false)
   const [hasSignature, setHasSignature] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -38,6 +86,19 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
   function setField(k: keyof typeof form, v: string) {
     setForm((f) => ({ ...f, [k]: v }))
     setError("")
+  }
+
+  function setH<K extends keyof HealthState>(k: K, v: HealthState[K]) {
+    setHealth((h) => ({ ...h, [k]: v }))
+  }
+
+  function togglePersonality(tag: string) {
+    setHealth((h) => ({
+      ...h,
+      personality: h.personality.includes(tag)
+        ? h.personality.filter((t) => t !== tag)
+        : [...h.personality, tag],
+    }))
   }
 
   function validateStep1(): string {
@@ -78,6 +139,20 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
           gender: form.gender,
           signerName: form.name.trim(),
           signatureUrl,
+          // 健康資料
+          personality: health.personality,
+          boneIssue: health.boneIssue, boneNote: health.boneNote || null,
+          skinIssue: health.skinIssue, skinNote: health.skinNote || null,
+          earIssue: health.earIssue, earNote: health.earNote || null,
+          eyeIssue: health.eyeIssue, eyeNote: health.eyeNote || null,
+          heartDisease: health.heartDisease, boneDisease: health.boneDisease,
+          skinDisease: health.skinDisease, epilepsy: health.epilepsy, diabetes: health.diabetes,
+          surgeryHistory: health.surgeryHistory, surgeryNote: health.surgeryNote || null,
+          otherDisease: health.otherDisease || null,
+          bathFrequency: health.bathFrequency || null, groomFrequency: health.groomFrequency || null,
+          blowDryerFear: health.blowDryerFear || null, afterGroomHandle: health.afterGroomHandle || null,
+          consentPhoto: health.consentPhoto, consentSnack: health.consentSnack,
+          snackAllergy: health.snackAllergy || null,
         }),
       })
       if (!res.ok) {
@@ -103,7 +178,6 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
             </div>
             <span className="font-semibold text-gray-900 truncate">{shopName}</span>
           </div>
-          {/* Step indicator */}
           <div className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
             {[1, 2, 3].map((s) => (
               <div key={s} className="flex items-center gap-1">
@@ -119,7 +193,7 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
 
       <div className="mx-auto max-w-lg px-4 py-6 space-y-5">
 
-        {/* Step 1 — Basic info */}
+        {/* Step 1 — Basic info + health */}
         {step === 1 && (
           <>
             <div>
@@ -127,6 +201,7 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
               <p className="text-sm text-gray-500 mt-1">請填寫您與寵物的基本資料</p>
             </div>
 
+            {/* 飼主資料 */}
             <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
               <p className="text-sm font-semibold text-gray-700">飼主資料</p>
               <div className="space-y-3">
@@ -143,8 +218,9 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
               </div>
             </div>
 
+            {/* 寵物基本資料 */}
             <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
-              <p className="text-sm font-semibold text-gray-700">寵物資料</p>
+              <p className="text-sm font-semibold text-gray-700">寵物基本資料</p>
               <div className="space-y-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="petName" className="text-xs">寵物名稱 *</Label>
@@ -157,9 +233,7 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
                     {["犬", "貓", "其他"].map((sp) => (
                       <button key={sp} type="button" onClick={() => setField("species", sp)}
                         className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors ${
-                          form.species === sp
-                            ? "border-indigo-500 bg-indigo-600 text-white"
-                            : "border-gray-200 text-gray-600 hover:border-indigo-300"
+                          form.species === sp ? "border-indigo-500 bg-indigo-600 text-white" : "border-gray-200 text-gray-600 hover:border-indigo-300"
                         }`}>{sp}</button>
                     ))}
                   </div>
@@ -175,14 +249,116 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
                     {GENDER_OPTIONS.map((g) => (
                       <button key={g.value} type="button" onClick={() => setField("gender", g.value)}
                         className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors ${
-                          form.gender === g.value
-                            ? "border-indigo-500 bg-indigo-600 text-white"
-                            : "border-gray-200 text-gray-600 hover:border-indigo-300"
+                          form.gender === g.value ? "border-indigo-500 bg-indigo-600 text-white" : "border-gray-200 text-gray-600 hover:border-indigo-300"
                         }`}>{g.label}</button>
                     ))}
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* 個性標籤 */}
+            <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
+              <p className="text-sm font-semibold text-gray-700">個性標籤（選填）</p>
+              <div className="flex flex-wrap gap-2">
+                {PERSONALITY_OPTIONS.map((tag) => (
+                  <ToggleChip key={tag} label={tag} active={health.personality.includes(tag)} onClick={() => togglePersonality(tag)} />
+                ))}
+              </div>
+            </div>
+
+            {/* 身體狀況 */}
+            <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+              <p className="text-sm font-semibold text-gray-700">身體狀況</p>
+              <IssueRow label="骨骼" active={health.boneIssue} note={health.boneNote} onToggle={() => setH("boneIssue", !health.boneIssue)} onNote={(v) => setH("boneNote", v)} />
+              <IssueRow label="皮膚" active={health.skinIssue} note={health.skinNote} onToggle={() => setH("skinIssue", !health.skinIssue)} onNote={(v) => setH("skinNote", v)} />
+              <IssueRow label="耳朵" active={health.earIssue} note={health.earNote} onToggle={() => setH("earIssue", !health.earIssue)} onNote={(v) => setH("earNote", v)} />
+              <IssueRow label="眼睛" active={health.eyeIssue} note={health.eyeNote} onToggle={() => setH("eyeIssue", !health.eyeIssue)} onNote={(v) => setH("eyeNote", v)} />
+            </div>
+
+            {/* 病史 */}
+            <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+              <p className="text-sm font-semibold text-gray-700">病史（有的請點選）</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: "heartDisease" as const, label: "心臟病" },
+                  { key: "boneDisease" as const, label: "骨骼疾病" },
+                  { key: "skinDisease" as const, label: "皮膚疾病" },
+                  { key: "epilepsy" as const, label: "癲癇" },
+                  { key: "diabetes" as const, label: "糖尿病" },
+                ].map(({ key, label }) => (
+                  <ToggleChip key={key} label={label} active={health[key]} onClick={() => setH(key, !health[key])} />
+                ))}
+                <ToggleChip label="手術史" active={health.surgeryHistory} onClick={() => setH("surgeryHistory", !health.surgeryHistory)} />
+              </div>
+              {health.surgeryHistory && (
+                <Input placeholder="手術說明..." value={health.surgeryNote}
+                  onChange={(e) => setH("surgeryNote", e.target.value)} className="h-9 text-sm" />
+              )}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-gray-500">其他病史（選填）</Label>
+                <Input placeholder="其他需注意的疾病..." value={health.otherDisease}
+                  onChange={(e) => setH("otherDisease", e.target.value)} className="h-9" />
+              </div>
+            </div>
+
+            {/* 美容習慣 */}
+            <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+              <p className="text-sm font-semibold text-gray-700">美容習慣（選填）</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-gray-500">洗澡頻率</Label>
+                  <Input placeholder="例：每月一次" value={health.bathFrequency}
+                    onChange={(e) => setH("bathFrequency", e.target.value)} className="h-9" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-gray-500">美容頻率</Label>
+                  <Input placeholder="例：每兩個月" value={health.groomFrequency}
+                    onChange={(e) => setH("groomFrequency", e.target.value)} className="h-9" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-gray-500">吹風機接受度</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {BLOW_DRYER_OPTIONS.map((opt) => (
+                    <ToggleChip key={opt} label={opt} active={health.blowDryerFear === opt}
+                      onClick={() => setH("blowDryerFear", health.blowDryerFear === opt ? "" : opt)} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 同意事項 */}
+            <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+              <p className="text-sm font-semibold text-gray-700">美容相關同意</p>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-gray-500">美容後處置方式</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {AFTER_GROOM_OPTIONS.map((opt) => (
+                    <ToggleChip key={opt} label={opt} active={health.afterGroomHandle === opt}
+                      onClick={() => setH("afterGroomHandle", health.afterGroomHandle === opt ? "" : opt)} />
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-start gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={health.consentPhoto} onChange={(e) => setH("consentPhoto", e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600" />
+                  同意拍照作為美容紀錄
+                </label>
+                <label className="flex items-start gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={health.consentSnack} onChange={(e) => setH("consentSnack", e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600" />
+                  同意美容過程中給予零食獎勵
+                </label>
+              </div>
+              {health.consentSnack && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-gray-500">零食過敏資訊</Label>
+                  <Input placeholder="不能吃的零食種類..." value={health.snackAllergy}
+                    onChange={(e) => setH("snackAllergy", e.target.value)} className="h-9" />
+                </div>
+              )}
             </div>
 
             {error && <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{error}</p>}
@@ -207,7 +383,6 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
               <p className="text-sm text-gray-500 mt-1">請仔細閱讀以下定型化契約後簽名</p>
             </div>
 
-            {/* Customer + pet summary */}
             <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-4 text-sm">
               <p className="text-indigo-800"><span className="font-medium">飼主：</span>{form.name}（{form.phone}）</p>
               <p className="text-indigo-800 mt-0.5">
@@ -215,7 +390,6 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
               </p>
             </div>
 
-            {/* Contract content */}
             <div className="rounded-xl border border-gray-200 bg-white p-5">
               {contractTemplate ? (
                 <div className="prose prose-sm max-w-none text-gray-800"
@@ -225,7 +399,6 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
               )}
             </div>
 
-            {/* Signature */}
             <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-gray-700">手寫簽名</p>
@@ -235,22 +408,13 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
                 </button>
               </div>
               <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 overflow-hidden">
-                <SignatureCanvas
-                  ref={sigRef}
-                  penColor="black"
-                  canvasProps={{
-                    width: 560,
-                    height: 180,
-                    className: "w-full touch-none",
-                    style: { maxWidth: "100%", height: "180px" },
-                  }}
-                  onBegin={() => setHasSignature(true)}
-                />
+                <SignatureCanvas ref={sigRef} penColor="black"
+                  canvasProps={{ width: 560, height: 180, className: "w-full touch-none", style: { maxWidth: "100%", height: "180px" } }}
+                  onBegin={() => setHasSignature(true)} />
               </div>
               <p className="text-xs text-gray-400">請用手指（手機）或滑鼠（電腦）在上方框內簽名</p>
             </div>
 
-            {/* Agree checkbox */}
             <div className="flex items-start gap-3">
               <input type="checkbox" id="agreed" checked={agreed}
                 onChange={(e) => { setAgreed(e.target.checked); setError("") }}

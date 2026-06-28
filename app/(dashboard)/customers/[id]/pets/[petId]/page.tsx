@@ -260,32 +260,83 @@ export default async function PetDetailPage({
             </CardContent>
           </Card>
 
-          {(pet.diseases || pet.allergies || pet.notes) && (
-            <Card>
-              <CardContent className="p-5 space-y-3">
-                {pet.diseases && (
-                  <div>
-                    <p className="text-xs text-gray-500">特殊疾病</p>
-                    <p className="text-sm text-gray-900 mt-0.5">{pet.diseases}</p>
+          {/* 健康資料 */}
+          <Card>
+            <CardContent className="p-5 space-y-4">
+              {/* 個性標籤 */}
+              {pet.personality.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">個性標籤</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {pet.personality.map((tag) => (
+                      <span key={tag} className="rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 text-xs font-medium text-indigo-700">{tag}</span>
+                    ))}
                   </div>
-                )}
-                {pet.allergies && (
-                  <div>
-                    <p className="text-xs text-gray-500">過敏紀錄</p>
-                    <p className="text-sm text-red-700 bg-red-50 rounded-lg p-2 mt-0.5">
-                      ⚠️ {pet.allergies}
-                    </p>
+                </div>
+              )}
+
+              {/* 身體狀況 */}
+              {(pet.boneIssue || pet.skinIssue || pet.earIssue || pet.eyeIssue) && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">身體狀況</p>
+                  <div className="space-y-1">
+                    {pet.boneIssue && <p className="text-sm text-red-700">骨骼有問題{pet.boneNote ? `：${pet.boneNote}` : ""}</p>}
+                    {pet.skinIssue && <p className="text-sm text-red-700">皮膚有問題{pet.skinNote ? `：${pet.skinNote}` : ""}</p>}
+                    {pet.earIssue && <p className="text-sm text-red-700">耳朵有問題{pet.earNote ? `：${pet.earNote}` : ""}</p>}
+                    {pet.eyeIssue && <p className="text-sm text-red-700">眼睛有問題{pet.eyeNote ? `：${pet.eyeNote}` : ""}</p>}
                   </div>
-                )}
-                {pet.notes && (
-                  <div>
-                    <p className="text-xs text-gray-500">備註</p>
-                    <p className="text-sm text-gray-900 mt-0.5">{pet.notes}</p>
+                </div>
+              )}
+
+              {/* 病史 */}
+              {(pet.heartDisease || pet.boneDisease || pet.skinDisease || pet.epilepsy || pet.diabetes || pet.surgeryHistory || pet.otherDisease) && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">病史</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {pet.heartDisease && <span className="rounded-full bg-red-50 border border-red-200 px-2.5 py-0.5 text-xs font-medium text-red-700">心臟病</span>}
+                    {pet.boneDisease && <span className="rounded-full bg-red-50 border border-red-200 px-2.5 py-0.5 text-xs font-medium text-red-700">骨骼疾病</span>}
+                    {pet.skinDisease && <span className="rounded-full bg-red-50 border border-red-200 px-2.5 py-0.5 text-xs font-medium text-red-700">皮膚疾病</span>}
+                    {pet.epilepsy && <span className="rounded-full bg-red-50 border border-red-200 px-2.5 py-0.5 text-xs font-medium text-red-700">癲癇</span>}
+                    {pet.diabetes && <span className="rounded-full bg-red-50 border border-red-200 px-2.5 py-0.5 text-xs font-medium text-red-700">糖尿病</span>}
+                    {pet.surgeryHistory && <span className="rounded-full bg-orange-50 border border-orange-200 px-2.5 py-0.5 text-xs font-medium text-orange-700">手術史{pet.surgeryNote ? `：${pet.surgeryNote}` : ""}</span>}
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                  {pet.otherDisease && <p className="text-sm text-gray-700 mt-1.5">其他：{pet.otherDisease}</p>}
+                </div>
+              )}
+
+              {/* 美容習慣 */}
+              {(pet.blowDryerFear || pet.bathFrequency || pet.groomFrequency) && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">美容習慣</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm text-gray-700">
+                    {pet.bathFrequency && <span>洗澡：{pet.bathFrequency}</span>}
+                    {pet.groomFrequency && <span>美容：{pet.groomFrequency}</span>}
+                    {pet.blowDryerFear && <span>吹風機：{pet.blowDryerFear}</span>}
+                  </div>
+                </div>
+              )}
+
+              {/* 同意事項 */}
+              {(pet.afterGroomHandle || pet.consentPhoto || pet.consentSnack) && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">同意事項</p>
+                  <div className="space-y-0.5 text-sm text-gray-700">
+                    {pet.afterGroomHandle && <p>美容後處置：{pet.afterGroomHandle}</p>}
+                    {pet.consentPhoto && <p className="text-green-700">✓ 同意拍照</p>}
+                    {pet.consentSnack && <p className="text-green-700">✓ 同意零食{pet.snackAllergy ? `（過敏：${pet.snackAllergy}）` : ""}</p>}
+                  </div>
+                </div>
+              )}
+
+              {/* 備註 */}
+              {pet.notes && (
+                <div>
+                  <p className="text-xs text-gray-500">備註</p>
+                  <p className="text-sm text-gray-900 mt-0.5">{pet.notes}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <VaccineManager petId={petId} initialRecords={vaccineRecords} />
 

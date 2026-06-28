@@ -203,7 +203,7 @@ async function main() {
     data: {
       name: "小白", species: "犬", breed: "馬爾濟斯", gender: "MALE",
       birthday: new Date("2020-03-15"),
-      allergies: "對某些洗毛精敏感，請使用低敏配方",
+      skinIssue: true, skinNote: "對某些洗毛精敏感，請使用低敏配方",
       customerId: c1.id, shopId: SHOP_ID,
     },
   })
@@ -263,7 +263,7 @@ async function main() {
     },
   })
   const p5 = await prisma.pet.create({
-    data: { name: "大壯", species: "犬", breed: "黃金獵犬", gender: "MALE", birthday: new Date("2018-12-25"), diseases: "輕微關節問題", customerId: c3.id, shopId: SHOP_ID },
+    data: { name: "大壯", species: "犬", breed: "黃金獵犬", gender: "MALE", birthday: new Date("2018-12-25"), boneIssue: true, boneNote: "輕微關節問題", customerId: c3.id, shopId: SHOP_ID },
   })
   console.log(`  c3 李大同: ${c3.id}, p5 大壯: ${p5.id}`)
 

@@ -17,22 +17,34 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+
+const PERSONALITY_OPTIONS = ["黏人", "膽小", "親人", "活潑", "易怒", "咬人", "討厭狗狗", "討厭貓咪"]
+const BLOW_DRYER_OPTIONS = ["完全接受", "有點怕", "非常怕"]
+const AFTER_GROOM_OPTIONS = ["自由落地", "桌上限制活動", "圍片限制活動", "回到自己外出籠", "以上皆可"]
+
+const EMPTY_FORM = {
+  name: "", species: "犬", breed: "", gender: "UNKNOWN", birthday: "", chipNumber: "", notes: "",
+  personality: [] as string[],
+  boneIssue: false, boneNote: "",
+  skinIssue: false, skinNote: "",
+  earIssue: false, earNote: "",
+  eyeIssue: false, eyeNote: "",
+  heartDisease: false, boneDisease: false, skinDisease: false,
+  epilepsy: false, diabetes: false,
+  surgeryHistory: false, surgeryNote: "",
+  otherDisease: "",
+  bathFrequency: "", groomFrequency: "", blowDryerFear: "",
+  afterGroomHandle: "", consentPhoto: false, consentSnack: false, snackAllergy: "",
+}
 
 function parsePetText(raw: string) {
   const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean)
-  let name = "", species = "犬", breed = "", chipNumber = "", diseases = "", allergies = ""
+  let name = "", species = "犬", breed = "", chipNumber = ""
   const notesLines: string[] = []
-
   for (const line of lines) {
-    if (/名字|名稱|寵物名/.test(line)) {
-      name = line.replace(/.*[:：]\s*/, "").trim()
-      continue
-    }
-    if (/品種/.test(line)) {
-      breed = line.replace(/品種\s*[:：]?\s*/, "").trim()
-      continue
-    }
-    // 物種判斷：貓優先，再犬/狗
+    if (/名字|名稱|寵物名/.test(line)) { name = line.replace(/.*[:：]\s*/, "").trim(); continue }
+    if (/品種/.test(line)) { breed = line.replace(/品種\s*[:：]?\s*/, "").trim(); continue }
     if (/貓/.test(line)) { species = "貓"; continue }
     if (/犬|狗/.test(line)) { species = "犬"; continue }
     if (/晶片/.test(line)) {
@@ -40,18 +52,42 @@ function parsePetText(raw: string) {
       chipNumber = m ? m[0] : line.replace(/晶片\s*號碼?\s*[:：]?\s*/, "").trim()
       continue
     }
-    if (/過敏/.test(line)) {
-      allergies = line.replace(/過敏\s*[:：]?\s*/, "").trim()
-      continue
-    }
-    if (/疾病|病史|病/.test(line)) {
-      diseases = line.replace(/疾病|病史\s*[:：]?\s*/, "").trim()
-      continue
-    }
     notesLines.push(line)
   }
+  return { name, species, breed, chipNumber, notes: notesLines.join("\n").trim() }
+}
 
-  return { name, species, breed, chipNumber, diseases, allergies, notes: notesLines.join("\n").trim() }
+function ToggleChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
+        active ? "border-indigo-500 bg-indigo-600 text-white" : "border-gray-200 text-gray-600 hover:border-indigo-300"
+      }`}>
+      {label}
+    </button>
+  )
+}
+
+function IssueRow({
+  label, active, note,
+  onToggle, onNote,
+}: { label: string; active: boolean; note: string; onToggle: () => void; onNote: (v: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={onToggle}
+          className={`rounded-full border px-3 py-0.5 text-xs font-medium transition-colors ${
+            active ? "border-red-400 bg-red-500 text-white" : "border-gray-200 text-gray-500 hover:border-gray-400"
+          }`}>
+          {active ? "有問題" : "正常"}
+        </button>
+        <span className="text-sm text-gray-700">{label}</span>
+      </div>
+      {active && (
+        <Input placeholder="說明..." value={note} onChange={(e) => onNote(e.target.value)} className="h-8 text-sm" />
+      )}
+    </div>
+  )
 }
 
 export default function NewPetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -59,19 +95,8 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [form, setForm] = useState({
-    name: "",
-    species: "犬",
-    breed: "",
-    gender: "UNKNOWN",
-    birthday: "",
-    chipNumber: "",
-    diseases: "",
-    allergies: "",
-    notes: "",
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
 
-  // Scan state
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [scanPreview, setScanPreview] = useState<string | null>(null)
   const [scanLoading, setScanLoading] = useState(false)
@@ -80,47 +105,44 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
   const [scanError, setScanError] = useState("")
   const [scanDone, setScanDone] = useState(false)
 
+  function set<K extends keyof typeof EMPTY_FORM>(k: K, v: (typeof EMPTY_FORM)[K]) {
+    setForm((f) => ({ ...f, [k]: v }))
+  }
+
+  function togglePersonality(tag: string) {
+    setForm((f) => ({
+      ...f,
+      personality: f.personality.includes(tag)
+        ? f.personality.filter((t) => t !== tag)
+        : [...f.personality, tag],
+    }))
+  }
+
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    setScanError("")
-    setScanDone(false)
-    setScanProgress(0)
-    setScanStatus("")
+    setScanError(""); setScanDone(false); setScanProgress(0); setScanStatus("")
     const reader = new FileReader()
-    reader.onload = (ev) => {
-      setScanPreview(ev.target?.result as string)
-    }
+    reader.onload = (ev) => setScanPreview(ev.target?.result as string)
     reader.readAsDataURL(file)
   }
 
   async function handleScan() {
     if (!scanPreview) return
-    setScanLoading(true)
-    setScanError("")
-    setScanProgress(20)
-    setScanStatus("上傳圖片中...")
-
+    setScanLoading(true); setScanError(""); setScanProgress(20); setScanStatus("上傳圖片中...")
     try {
-      setScanProgress(40)
-      setScanStatus("辨識中...")
-
+      setScanProgress(40); setScanStatus("辨識中...")
       const res = await fetch("/api/ocr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: scanPreview }),
       })
-
-      setScanProgress(80)
-      setScanStatus("解析資料...")
-
+      setScanProgress(80); setScanStatus("解析資料...")
       if (!res.ok) {
         const data = await res.json() as { error?: string }
         throw new Error(data.error ?? "辨識失敗")
       }
-
       const { text } = await res.json() as { text: string }
-
       const parsed = parsePetText(text)
       setForm((prev) => ({
         ...prev,
@@ -128,13 +150,9 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
         species: parsed.species,
         breed: parsed.breed || prev.breed,
         chipNumber: parsed.chipNumber || prev.chipNumber,
-        diseases: parsed.diseases || prev.diseases,
-        allergies: parsed.allergies || prev.allergies,
         notes: parsed.notes || prev.notes,
       }))
-
-      setScanProgress(100)
-      setScanDone(true)
+      setScanProgress(100); setScanDone(true)
     } catch (err: unknown) {
       setScanError(err instanceof Error ? err.message : "辨識失敗，請重試")
     } finally {
@@ -143,23 +161,36 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
   }
 
   function clearScan() {
-    setScanPreview(null)
-    setScanDone(false)
-    setScanError("")
-    setScanProgress(0)
-    setScanStatus("")
+    setScanPreview(null); setScanDone(false); setScanError(""); setScanProgress(0); setScanStatus("")
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
-    setError("")
+    setLoading(true); setError("")
     try {
       const res = await fetch("/api/pets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, customerId }),
+        body: JSON.stringify({
+          ...form,
+          customerId,
+          breed: form.breed || null,
+          birthday: form.birthday || null,
+          chipNumber: form.chipNumber || null,
+          notes: form.notes || null,
+          boneNote: form.boneNote || null,
+          skinNote: form.skinNote || null,
+          earNote: form.earNote || null,
+          eyeNote: form.eyeNote || null,
+          surgeryNote: form.surgeryNote || null,
+          otherDisease: form.otherDisease || null,
+          bathFrequency: form.bathFrequency || null,
+          groomFrequency: form.groomFrequency || null,
+          blowDryerFear: form.blowDryerFear || null,
+          afterGroomHandle: form.afterGroomHandle || null,
+          snackAllergy: form.snackAllergy || null,
+        }),
       })
       if (!res.ok) {
         const data = await res.json()
@@ -177,233 +208,265 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
     <div className="p-4 sm:p-6 max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Link href={`/customers/${customerId}`}>
-          <Button variant="ghost" size="icon">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+          <Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button>
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">新增寵物</h1>
-          <p className="text-sm text-gray-500 mt-0.5">填寫寵物基本資料</p>
+          <p className="text-sm text-gray-500 mt-0.5">填寫寵物資料</p>
         </div>
       </div>
 
-      {/* Scan section */}
+      {/* OCR Scan */}
       <Card className="border-dashed border-indigo-200 bg-indigo-50/40">
         <CardContent className="pt-4 pb-4">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleImageSelect}
-          />
-
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
           {!scanPreview ? (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-100 transition-colors text-sm font-medium"
-            >
-              <Camera className="h-4 w-4" />
-              掃描紙本快速建檔
+            <button type="button" onClick={() => fileInputRef.current?.click()}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-100 transition-colors text-sm font-medium">
+              <Camera className="h-4 w-4" /> 掃描紙本快速建檔
             </button>
           ) : (
             <div className="space-y-3">
               <div className="relative">
-                <img
-                  src={scanPreview}
-                  alt="掃描預覽"
-                  className="w-full max-h-48 object-contain rounded-lg border border-indigo-200"
-                />
+                <img src={scanPreview} alt="掃描預覽" className="w-full max-h-48 object-contain rounded-lg border border-indigo-200" />
                 {!scanLoading && (
-                  <button
-                    type="button"
-                    onClick={clearScan}
-                    className="absolute top-1 right-1 bg-white rounded-full p-0.5 shadow text-gray-500 hover:text-gray-700"
-                  >
+                  <button type="button" onClick={clearScan} className="absolute top-1 right-1 bg-white rounded-full p-0.5 shadow text-gray-500 hover:text-gray-700">
                     <X className="h-4 w-4" />
                   </button>
                 )}
               </div>
-
               {scanLoading && (
                 <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>{scanStatus}</span>
-                    <span>{scanProgress}%</span>
-                  </div>
+                  <div className="flex justify-between text-xs text-gray-500"><span>{scanStatus}</span><span>{scanProgress}%</span></div>
                   <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                      style={{ width: `${scanProgress}%` }}
-                    />
+                    <div className="h-full bg-indigo-500 rounded-full transition-all duration-300" style={{ width: `${scanProgress}%` }} />
                   </div>
                 </div>
               )}
-
               {scanDone && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2">
-                    <CheckCircle className="h-4 w-4 flex-shrink-0" />
-                    辨識完成，已自動填入寵物資料。
+                    <CheckCircle className="h-4 w-4 flex-shrink-0" /> 辨識完成，已自動填入寵物資料。
                   </div>
-                  <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-                    ⚠️ OCR 辨識準確率有限，請確認並修正辨識結果後再儲存。
-                  </p>
+                  <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">⚠️ OCR 辨識準確率有限，請確認並修正辨識結果後再儲存。</p>
                 </div>
               )}
-
-              {scanError && (
-                <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{scanError}</p>
-              )}
-
+              {scanError && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{scanError}</p>}
               {!scanDone && !scanLoading && (
-                <Button
-                  type="button"
-                  onClick={handleScan}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700"
-                  size="sm"
-                >
-                  開始辨識
-                </Button>
+                <Button type="button" onClick={handleScan} className="w-full bg-indigo-600 hover:bg-indigo-700" size="sm">開始辨識</Button>
               )}
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">寵物資料</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="name">寵物名稱 *</Label>
-                <Input
-                  id="name"
-                  placeholder="小白、咪咪..."
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>物種</Label>
-                <Select
-                  value={form.species}
-                  onValueChange={(v) => setForm({ ...form, species: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="犬">🐕 犬</SelectItem>
-                    <SelectItem value="貓">🐈 貓</SelectItem>
-                    <SelectItem value="兔">🐇 兔</SelectItem>
-                    <SelectItem value="鳥">🦜 鳥</SelectItem>
-                    <SelectItem value="其他">🐾 其他</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Tabs defaultValue="basic">
+          <TabsList className="w-full">
+            <TabsTrigger value="basic" className="flex-1">基本資料</TabsTrigger>
+            <TabsTrigger value="health" className="flex-1">健康資料</TabsTrigger>
+          </TabsList>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="breed">品種</Label>
-                <Input
-                  id="breed"
-                  placeholder="馬爾濟斯、柴犬..."
-                  value={form.breed}
-                  onChange={(e) => setForm({ ...form, breed: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>性別</Label>
-                <Select
-                  value={form.gender}
-                  onValueChange={(v) => setForm({ ...form, gender: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MALE">公</SelectItem>
-                    <SelectItem value="FEMALE">母</SelectItem>
-                    <SelectItem value="UNKNOWN">未知</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+          {/* ── Tab 1: 基本資料 ── */}
+          <TabsContent value="basic" className="mt-4">
+            <Card>
+              <CardContent className="pt-5 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="name">寵物名稱 *</Label>
+                    <Input id="name" placeholder="小白、咪咪..." value={form.name}
+                      onChange={(e) => set("name", e.target.value)} required />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>物種</Label>
+                    <Select value={form.species} onValueChange={(v) => set("species", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="犬">🐕 犬</SelectItem>
+                        <SelectItem value="貓">🐈 貓</SelectItem>
+                        <SelectItem value="兔">🐇 兔</SelectItem>
+                        <SelectItem value="鳥">🦜 鳥</SelectItem>
+                        <SelectItem value="其他">🐾 其他</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="birthday">生日</Label>
-                <Input
-                  id="birthday"
-                  type="date"
-                  value={form.birthday}
-                  onChange={(e) => setForm({ ...form, birthday: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="chipNumber">晶片號碼</Label>
-                <Input
-                  id="chipNumber"
-                  placeholder="15碼晶片號碼"
-                  value={form.chipNumber}
-                  onChange={(e) => setForm({ ...form, chipNumber: e.target.value })}
-                />
-              </div>
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="breed">品種</Label>
+                    <Input id="breed" placeholder="馬爾濟斯、柴犬..." value={form.breed}
+                      onChange={(e) => set("breed", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>性別</Label>
+                    <Select value={form.gender} onValueChange={(v) => set("gender", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="MALE">公</SelectItem>
+                        <SelectItem value="FEMALE">母</SelectItem>
+                        <SelectItem value="UNKNOWN">未知</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="diseases">特殊疾病</Label>
-              <Input
-                id="diseases"
-                placeholder="例：心臟病、氣管塌陷..."
-                value={form.diseases}
-                onChange={(e) => setForm({ ...form, diseases: e.target.value })}
-              />
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="birthday">生日</Label>
+                    <Input id="birthday" type="date" value={form.birthday}
+                      onChange={(e) => set("birthday", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="chipNumber">晶片號碼</Label>
+                    <Input id="chipNumber" placeholder="15碼晶片號碼" value={form.chipNumber}
+                      onChange={(e) => set("chipNumber", e.target.value)} />
+                  </div>
+                </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="allergies">過敏紀錄</Label>
-              <Input
-                id="allergies"
-                placeholder="例：對某洗毛精過敏..."
-                value={form.allergies}
-                onChange={(e) => setForm({ ...form, allergies: e.target.value })}
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="notes">備註</Label>
+                  <Textarea id="notes" placeholder="其他注意事項" value={form.notes}
+                    onChange={(e) => set("notes", e.target.value)} rows={3} />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="notes">備註</Label>
-              <Textarea
-                id="notes"
-                placeholder="其他注意事項"
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                rows={3}
-              />
-            </div>
+          {/* ── Tab 2: 健康資料 ── */}
+          <TabsContent value="health" className="mt-4 space-y-4">
+            {/* 個性標籤 */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold text-gray-700">個性標籤</CardTitle></CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                {PERSONALITY_OPTIONS.map((tag) => (
+                  <ToggleChip key={tag} label={tag} active={form.personality.includes(tag)} onClick={() => togglePersonality(tag)} />
+                ))}
+              </CardContent>
+            </Card>
 
-            {error && (
-              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
-            )}
+            {/* 身體狀況 */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold text-gray-700">身體狀況</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <IssueRow label="骨骼" active={form.boneIssue} note={form.boneNote} onToggle={() => set("boneIssue", !form.boneIssue)} onNote={(v) => set("boneNote", v)} />
+                <IssueRow label="皮膚" active={form.skinIssue} note={form.skinNote} onToggle={() => set("skinIssue", !form.skinIssue)} onNote={(v) => set("skinNote", v)} />
+                <IssueRow label="耳朵" active={form.earIssue} note={form.earNote} onToggle={() => set("earIssue", !form.earIssue)} onNote={(v) => set("earNote", v)} />
+                <IssueRow label="眼睛" active={form.eyeIssue} note={form.eyeNote} onToggle={() => set("eyeIssue", !form.eyeIssue)} onNote={(v) => set("eyeNote", v)} />
+              </CardContent>
+            </Card>
 
-            <div className="flex gap-3 pt-2">
-              <Button type="submit" disabled={loading} className="flex-1">
-                {loading ? "建立中..." : "建立寵物"}
-              </Button>
-              <Link href={`/customers/${customerId}`}>
-                <Button type="button" variant="outline">取消</Button>
-              </Link>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+            {/* 病史分類 */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold text-gray-700">病史分類</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { key: "heartDisease" as const, label: "心臟病" },
+                    { key: "boneDisease" as const, label: "骨骼疾病" },
+                    { key: "skinDisease" as const, label: "皮膚疾病" },
+                    { key: "epilepsy" as const, label: "癲癇" },
+                    { key: "diabetes" as const, label: "糖尿病" },
+                  ].map(({ key, label }) => (
+                    <ToggleChip key={key} label={label} active={form[key]} onClick={() => set(key, !form[key])} />
+                  ))}
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => set("surgeryHistory", !form.surgeryHistory)}
+                      className={`rounded-full border px-3 py-0.5 text-xs font-medium transition-colors ${
+                        form.surgeryHistory ? "border-indigo-500 bg-indigo-600 text-white" : "border-gray-200 text-gray-600 hover:border-indigo-300"
+                      }`}>手術史</button>
+                  </div>
+                  {form.surgeryHistory && (
+                    <Input placeholder="手術說明..." value={form.surgeryNote}
+                      onChange={(e) => set("surgeryNote", e.target.value)} className="h-8 text-sm" />
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-gray-600">其他病史</Label>
+                  <Input placeholder="其他需注意的疾病..." value={form.otherDisease}
+                    onChange={(e) => set("otherDisease", e.target.value)} />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 美容習慣 */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold text-gray-700">美容習慣</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">洗澡頻率</Label>
+                    <Input placeholder="例：每月一次" value={form.bathFrequency}
+                      onChange={(e) => set("bathFrequency", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">美容頻率</Label>
+                    <Input placeholder="例：每兩個月" value={form.groomFrequency}
+                      onChange={(e) => set("groomFrequency", e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">吹風機接受度</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {BLOW_DRYER_OPTIONS.map((opt) => (
+                      <ToggleChip key={opt} label={opt} active={form.blowDryerFear === opt}
+                        onClick={() => set("blowDryerFear", form.blowDryerFear === opt ? "" : opt)} />
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 同意事項 */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold text-gray-700">主人同意事項</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">美容後處置方式</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {AFTER_GROOM_OPTIONS.map((opt) => (
+                      <ToggleChip key={opt} label={opt} active={form.afterGroomHandle === opt}
+                        onClick={() => set("afterGroomHandle", form.afterGroomHandle === opt ? "" : opt)} />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={form.consentPhoto} onChange={(e) => set("consentPhoto", e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
+                    同意拍照作為美容紀錄
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={form.consentSnack} onChange={(e) => set("consentSnack", e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
+                    同意美容過程中給予零食獎勵
+                  </label>
+                </div>
+                {form.consentSnack && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">零食過敏資訊</Label>
+                    <Input placeholder="不能吃的零食種類..." value={form.snackAllergy}
+                      onChange={(e) => set("snackAllergy", e.target.value)} />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+
+        <div className="flex gap-3 pt-2">
+          <Button type="submit" disabled={loading} className="flex-1">
+            {loading ? "建立中..." : "建立寵物"}
+          </Button>
+          <Link href={`/customers/${customerId}`}>
+            <Button type="button" variant="outline">取消</Button>
+          </Link>
+        </div>
+      </form>
     </div>
   )
 }

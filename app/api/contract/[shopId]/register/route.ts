@@ -16,6 +16,35 @@ const registerSchema = z.object({
   gender: shortText.optional(),
   signerName: shortText.optional(),
   signatureUrl: z.string().min(1).max(MAX_SIGNATURE_LEN),
+  // 個性標籤
+  personality: z.array(z.string()).optional(),
+  // 身體狀況
+  boneIssue: z.boolean().optional(),
+  boneNote: shortText.nullish(),
+  skinIssue: z.boolean().optional(),
+  skinNote: shortText.nullish(),
+  earIssue: z.boolean().optional(),
+  earNote: shortText.nullish(),
+  eyeIssue: z.boolean().optional(),
+  eyeNote: shortText.nullish(),
+  // 病史分類
+  heartDisease: z.boolean().optional(),
+  boneDisease: z.boolean().optional(),
+  skinDisease: z.boolean().optional(),
+  epilepsy: z.boolean().optional(),
+  diabetes: z.boolean().optional(),
+  surgeryHistory: z.boolean().optional(),
+  surgeryNote: shortText.nullish(),
+  otherDisease: shortText.nullish(),
+  // 美容習慣
+  bathFrequency: shortText.nullish(),
+  groomFrequency: shortText.nullish(),
+  blowDryerFear: shortText.nullish(),
+  // 同意事項
+  afterGroomHandle: shortText.nullish(),
+  consentPhoto: z.boolean().optional(),
+  consentSnack: z.boolean().optional(),
+  snackAllergy: shortText.nullish(),
 })
 
 export async function POST(
@@ -31,7 +60,12 @@ export async function POST(
 
   const parsed = await readJson(req, registerSchema)
   if (!parsed.ok) return parsed.response
-  const { name, phone, petName, species, breed, gender, signerName, signatureUrl } = parsed.data
+  const {
+    name, phone, petName, species, breed, gender, signerName, signatureUrl,
+    personality, boneIssue, boneNote, skinIssue, skinNote, earIssue, earNote, eyeIssue, eyeNote,
+    heartDisease, boneDisease, skinDisease, epilepsy, diabetes, surgeryHistory, surgeryNote, otherDisease,
+    bathFrequency, groomFrequency, blowDryerFear, afterGroomHandle, consentPhoto, consentSnack, snackAllergy,
+  } = parsed.data
 
   try {
     const shop = await prisma.shop.findUnique({
@@ -57,6 +91,30 @@ export async function POST(
         gender: gender ?? "UNKNOWN",
         customerId: customer.id,
         shopId,
+        personality: personality ?? [],
+        boneIssue: boneIssue ?? false,
+        boneNote: boneNote || null,
+        skinIssue: skinIssue ?? false,
+        skinNote: skinNote || null,
+        earIssue: earIssue ?? false,
+        earNote: earNote || null,
+        eyeIssue: eyeIssue ?? false,
+        eyeNote: eyeNote || null,
+        heartDisease: heartDisease ?? false,
+        boneDisease: boneDisease ?? false,
+        skinDisease: skinDisease ?? false,
+        epilepsy: epilepsy ?? false,
+        diabetes: diabetes ?? false,
+        surgeryHistory: surgeryHistory ?? false,
+        surgeryNote: surgeryNote || null,
+        otherDisease: otherDisease || null,
+        bathFrequency: bathFrequency || null,
+        groomFrequency: groomFrequency || null,
+        blowDryerFear: blowDryerFear || null,
+        afterGroomHandle: afterGroomHandle || null,
+        consentPhoto: consentPhoto ?? false,
+        consentSnack: consentSnack ?? false,
+        snackAllergy: snackAllergy || null,
       },
     })
 
