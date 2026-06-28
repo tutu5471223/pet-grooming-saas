@@ -42,7 +42,8 @@ const createPetSchema = z.object({
   blowDryerFear: shortText.nullish(),
   // 同意事項
   afterGroomHandle: shortText.nullish(),
-  consentPhoto: z.boolean().optional(),
+  consentPhotoRecord: z.boolean().optional(),
+  consentPhotoSocial: z.boolean().optional(),
   consentSnack: z.boolean().optional(),
   snackAllergy: shortText.nullish(),
 })
@@ -103,7 +104,8 @@ export async function POST(req: NextRequest) {
           groomFrequency: body.groomFrequency || null,
           blowDryerFear: body.blowDryerFear || null,
           afterGroomHandle: body.afterGroomHandle || null,
-          consentPhoto: body.consentPhoto ?? false,
+          consentPhotoRecord: body.consentPhotoRecord ?? false,
+          consentPhotoSocial: body.consentPhotoSocial ?? false,
           consentSnack: body.consentSnack ?? false,
           snackAllergy: body.snackAllergy || null,
           customerId: body.customerId,

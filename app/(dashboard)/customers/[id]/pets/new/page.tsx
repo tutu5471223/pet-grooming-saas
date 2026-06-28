@@ -35,7 +35,7 @@ const EMPTY_FORM = {
   surgeryHistory: false, surgeryNote: "",
   otherDisease: "",
   bathFrequency: "", groomFrequency: "", blowDryerFear: "",
-  afterGroomHandle: "", consentPhoto: false, consentSnack: false, snackAllergy: "",
+  afterGroomHandle: "", consentPhotoRecord: false, consentPhotoSocial: false, consentSnack: false, snackAllergy: "",
 }
 
 function parsePetText(raw: string) {
@@ -347,7 +347,7 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
 
             {/* 身體狀況 */}
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold text-gray-700">身體狀況</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold text-gray-700">身體狀況<span className="text-xs font-normal text-gray-400 ml-1">（有問題請點選）</span></CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <IssueRow label="骨骼" active={form.boneIssue} note={form.boneNote} onToggle={() => set("boneIssue", !form.boneIssue)} onNote={(v) => set("boneNote", v)} />
                 <IssueRow label="皮膚" active={form.skinIssue} note={form.skinNote} onToggle={() => set("skinIssue", !form.skinIssue)} onNote={(v) => set("skinNote", v)} />
@@ -434,9 +434,14 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={form.consentPhoto} onChange={(e) => set("consentPhoto", e.target.checked)}
+                    <input type="checkbox" checked={form.consentPhotoRecord} onChange={(e) => set("consentPhotoRecord", e.target.checked)}
                       className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
-                    同意拍照作為美容紀錄
+                    同意拍攝照片作為美容紀錄
+                  </label>
+                  <label className="flex items-start gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={form.consentPhotoSocial} onChange={(e) => set("consentPhotoSocial", e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600" />
+                    同意寵物在店家拍攝之照片／影片，發布於本店經營之網路社群社交平台
                   </label>
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input type="checkbox" checked={form.consentSnack} onChange={(e) => set("consentSnack", e.target.checked)}

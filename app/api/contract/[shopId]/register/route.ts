@@ -42,7 +42,8 @@ const registerSchema = z.object({
   blowDryerFear: shortText.nullish(),
   // 同意事項
   afterGroomHandle: shortText.nullish(),
-  consentPhoto: z.boolean().optional(),
+  consentPhotoRecord: z.boolean().optional(),
+  consentPhotoSocial: z.boolean().optional(),
   consentSnack: z.boolean().optional(),
   snackAllergy: shortText.nullish(),
 })
@@ -64,7 +65,8 @@ export async function POST(
     name, phone, petName, species, breed, gender, signerName, signatureUrl,
     personality, boneIssue, boneNote, skinIssue, skinNote, earIssue, earNote, eyeIssue, eyeNote,
     heartDisease, boneDisease, skinDisease, epilepsy, diabetes, surgeryHistory, surgeryNote, otherDisease,
-    bathFrequency, groomFrequency, blowDryerFear, afterGroomHandle, consentPhoto, consentSnack, snackAllergy,
+    bathFrequency, groomFrequency, blowDryerFear, afterGroomHandle,
+    consentPhotoRecord, consentPhotoSocial, consentSnack, snackAllergy,
   } = parsed.data
 
   try {
@@ -112,7 +114,8 @@ export async function POST(
         groomFrequency: groomFrequency || null,
         blowDryerFear: blowDryerFear || null,
         afterGroomHandle: afterGroomHandle || null,
-        consentPhoto: consentPhoto ?? false,
+        consentPhotoRecord: consentPhotoRecord ?? false,
+        consentPhotoSocial: consentPhotoSocial ?? false,
         consentSnack: consentSnack ?? false,
         snackAllergy: snackAllergy || null,
       },

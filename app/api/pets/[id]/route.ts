@@ -40,7 +40,8 @@ const updatePetSchema = z.object({
   blowDryerFear: shortText.nullish(),
   // 同意事項
   afterGroomHandle: shortText.nullish(),
-  consentPhoto: z.boolean().optional(),
+  consentPhotoRecord: z.boolean().optional(),
+  consentPhotoSocial: z.boolean().optional(),
   consentSnack: z.boolean().optional(),
   snackAllergy: shortText.nullish(),
 })
@@ -125,7 +126,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.groomFrequency !== undefined) data.groomFrequency = body.groomFrequency || null
   if (body.blowDryerFear !== undefined) data.blowDryerFear = body.blowDryerFear || null
   if (body.afterGroomHandle !== undefined) data.afterGroomHandle = body.afterGroomHandle || null
-  if (body.consentPhoto !== undefined) data.consentPhoto = body.consentPhoto
+  if (body.consentPhotoRecord !== undefined) data.consentPhotoRecord = body.consentPhotoRecord
+  if (body.consentPhotoSocial !== undefined) data.consentPhotoSocial = body.consentPhotoSocial
   if (body.consentSnack !== undefined) data.consentSnack = body.consentSnack
   if (body.snackAllergy !== undefined) data.snackAllergy = body.snackAllergy || null
 

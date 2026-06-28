@@ -144,8 +144,9 @@ model Pet {
 
   // 主人同意事項
   afterGroomHandle String?
-  consentPhoto     Boolean  @default(false)
-  consentSnack     Boolean  @default(false)
+  consentPhotoRecord Boolean  @default(false)
+  consentPhotoSocial Boolean  @default(false)
+  consentSnack       Boolean  @default(false)
   snackAllergy     String?
   customerId     String
   customer       Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)

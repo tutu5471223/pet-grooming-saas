@@ -317,12 +317,13 @@ export default async function PetDetailPage({
               )}
 
               {/* 同意事項 */}
-              {(pet.afterGroomHandle || pet.consentPhoto || pet.consentSnack) && (
+              {(pet.afterGroomHandle || pet.consentPhotoRecord || pet.consentPhotoSocial || pet.consentSnack) && (
                 <div>
                   <p className="text-xs text-gray-500 mb-1.5">同意事項</p>
                   <div className="space-y-0.5 text-sm text-gray-700">
                     {pet.afterGroomHandle && <p>美容後處置：{pet.afterGroomHandle}</p>}
-                    {pet.consentPhoto && <p className="text-green-700">✓ 同意拍照</p>}
+                    {pet.consentPhotoRecord && <p className="text-green-700">✓ 同意拍攝照片作為美容紀錄</p>}
+                    {pet.consentPhotoSocial && <p className="text-green-700">✓ 同意照片／影片發布於社群平台</p>}
                     {pet.consentSnack && <p className="text-green-700">✓ 同意零食{pet.snackAllergy ? `（過敏：${pet.snackAllergy}）` : ""}</p>}
                   </div>
                 </div>
