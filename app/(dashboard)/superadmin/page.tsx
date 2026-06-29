@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Search, CheckCircle2, XCircle, ShieldOff, ShieldCheck, RefreshCw, Store, AlertCircle } from "lucide-react"
+import { Search, CheckCircle2, XCircle, ShieldOff, ShieldCheck, RefreshCw, Store, AlertCircle, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -22,7 +22,7 @@ interface ShopRecord {
 interface ConfirmAction {
   shopId: string
   shopName: string
-  action: "approve" | "reject" | "suspend" | "activate"
+  action: "approve" | "reject" | "suspend" | "activate" | "delete"
 }
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
@@ -37,6 +37,7 @@ const ACTION_LABEL: Record<string, string> = {
   reject: "拒絕",
   suspend: "停用",
   activate: "啟用",
+  delete: "刪除",
 }
 
 export default function SuperAdminPage() {
@@ -77,15 +78,21 @@ export default function SuperAdminPage() {
     setActioning(true)
     setActionError("")
     try {
+      const isDelete = confirm.action === "delete"
       const res = await fetch(`/api/superadmin/shops/${confirm.shopId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: confirm.action }),
+        method: isDelete ? "DELETE" : "PATCH",
+        ...(isDelete ? {} : {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: confirm.action }),
+        }),
       })
-      if (!res.ok) throw new Error("操作失敗")
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as { error?: string }).error ?? "操作失敗")
+      }
       setConfirm(null)
       fetchPending()
-      if (tab === "all") fetchAll(search)
+      fetchAll(search)
     } catch (e: unknown) {
       setActionError(e instanceof Error ? e.message : "操作失敗")
     } finally {
@@ -248,30 +255,38 @@ export default function SuperAdminPage() {
                           </span>
                         </td>
                         <td className="py-2.5 text-right">
-                          {shop.status === "ACTIVE" && (
-                            <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 h-7 text-xs gap-1"
-                              onClick={() => setConfirm({ shopId: shop.id, shopName: shop.name, action: "suspend" })}>
-                              <ShieldOff className="h-3 w-3" />停用
-                            </Button>
-                          )}
-                          {shop.status === "SUSPENDED" && (
-                            <Button size="sm" variant="outline" className="border-green-300 text-green-600 hover:bg-green-50 h-7 text-xs gap-1"
-                              onClick={() => setConfirm({ shopId: shop.id, shopName: shop.name, action: "activate" })}>
-                              <ShieldCheck className="h-3 w-3" />啟用
-                            </Button>
-                          )}
-                          {shop.status === "PENDING" && (
-                            <div className="flex gap-1 justify-end">
-                              <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 gap-1"
-                                onClick={() => setConfirm({ shopId: shop.id, shopName: shop.name, action: "approve" })}>
-                                <CheckCircle2 className="h-3 w-3" />核准
+                          <div className="flex gap-1 justify-end">
+                            {shop.status === "ACTIVE" && (
+                              <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 h-7 text-xs gap-1"
+                                onClick={() => setConfirm({ shopId: shop.id, shopName: shop.name, action: "suspend" })}>
+                                <ShieldOff className="h-3 w-3" />停用
                               </Button>
-                              <Button size="sm" variant="outline" className="h-7 text-xs border-red-300 text-red-600 hover:bg-red-50 gap-1"
-                                onClick={() => setConfirm({ shopId: shop.id, shopName: shop.name, action: "reject" })}>
-                                <XCircle className="h-3 w-3" />拒絕
+                            )}
+                            {shop.status === "SUSPENDED" && (
+                              <Button size="sm" variant="outline" className="border-green-300 text-green-600 hover:bg-green-50 h-7 text-xs gap-1"
+                                onClick={() => setConfirm({ shopId: shop.id, shopName: shop.name, action: "activate" })}>
+                                <ShieldCheck className="h-3 w-3" />啟用
                               </Button>
-                            </div>
-                          )}
+                            )}
+                            {shop.status === "PENDING" && (
+                              <>
+                                <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 gap-1"
+                                  onClick={() => setConfirm({ shopId: shop.id, shopName: shop.name, action: "approve" })}>
+                                  <CheckCircle2 className="h-3 w-3" />核准
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs border-red-300 text-red-600 hover:bg-red-50 gap-1"
+                                  onClick={() => setConfirm({ shopId: shop.id, shopName: shop.name, action: "reject" })}>
+                                  <XCircle className="h-3 w-3" />拒絕
+                                </Button>
+                              </>
+                            )}
+                            {(shop.status === "SUSPENDED" || shop.status === "REJECTED") && (
+                              <Button size="sm" variant="outline" className="border-gray-300 text-gray-500 hover:bg-red-50 hover:border-red-300 hover:text-red-600 h-7 text-xs gap-1"
+                                onClick={() => setConfirm({ shopId: shop.id, shopName: shop.name, action: "delete" })}>
+                                <Trash2 className="h-3 w-3" />刪除
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -287,9 +302,18 @@ export default function SuperAdminPage() {
       <Dialog open={!!confirm} onOpenChange={() => { setConfirm(null); setActionError("") }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>確認操作</DialogTitle>
+            <DialogTitle>
+              {confirm?.action === "delete" ? "確認刪除店家" : "確認操作"}
+            </DialogTitle>
             <DialogDescription>
-              確定要{confirm ? ACTION_LABEL[confirm.action] : ""}「{confirm?.shopName}」嗎？
+              {confirm?.action === "delete" ? (
+                <>
+                  確定要刪除「{confirm.shopName}」嗎？<br />
+                  <span className="text-red-600 font-medium">此操作無法復原，所有相關資料將一併刪除。</span>
+                </>
+              ) : (
+                `確定要${confirm ? ACTION_LABEL[confirm.action] : ""}「${confirm?.shopName}」嗎？`
+              )}
             </DialogDescription>
           </DialogHeader>
           {actionError && (
@@ -299,7 +323,11 @@ export default function SuperAdminPage() {
             </div>
           )}
           <div className="flex gap-3 pt-1">
-            <Button onClick={doAction} disabled={actioning} className="flex-1">
+            <Button
+              onClick={doAction}
+              disabled={actioning}
+              className={`flex-1 ${confirm?.action === "delete" ? "bg-red-600 hover:bg-red-700" : ""}`}
+            >
               {actioning ? "處理中..." : `確認${confirm ? ACTION_LABEL[confirm.action] : ""}`}
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => { setConfirm(null); setActionError("") }}>

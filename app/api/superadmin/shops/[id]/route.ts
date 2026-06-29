@@ -99,3 +99,58 @@ export async function PATCH(
 
   return NextResponse.json({ ok: true, status: newStatus })
 }
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth()
+  if (!session?.user.isSuperAdmin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  const { id } = await params
+
+  // Protect the system shop and active shops
+  if (id === "system") {
+    return NextResponse.json({ error: "系統店家不可刪除" }, { status: 400 })
+  }
+
+  const shop = await prisma.shop.findUnique({ where: { id }, select: { status: true, name: true } })
+  if (!shop) return NextResponse.json({ error: "Not found" }, { status: 404 })
+  if (shop.status !== "SUSPENDED" && shop.status !== "REJECTED") {
+    return NextResponse.json({ error: "只有已停用或已拒絕的店家才能刪除" }, { status: 400 })
+  }
+
+  // Delete in dependency order to avoid FK constraint violations.
+  // Child tables with onDelete:Cascade (e.g. Pet→GroomingRecord) are handled
+  // automatically; the rest must be deleted explicitly before their parent.
+  await prisma.$transaction([
+    prisma.notification.deleteMany({ where: { shopId: id } }),
+    prisma.subscription.deleteMany({ where: { shopId: id } }),
+    prisma.auditLog.deleteMany({ where: { shopId: id } }),
+    prisma.payment.deleteMany({ where: { shopId: id } }),
+    prisma.expense.deleteMany({ where: { shopId: id } }),
+    prisma.appointment.deleteMany({ where: { shopId: id } }),
+    // Sale → SaleItem cascades automatically
+    prisma.sale.deleteMany({ where: { shopId: id } }),
+    prisma.product.deleteMany({ where: { shopId: id } }),
+    // BoardingDailyLog before BoardingRecord
+    prisma.boardingDailyLog.deleteMany({ where: { shopId: id } }),
+    prisma.boardingRecord.deleteMany({ where: { shopId: id } }),
+    prisma.boardingRoom.deleteMany({ where: { shopId: id } }),
+    // StoredValueHistory / PointsHistory before Customer
+    prisma.storedValueHistory.deleteMany({ where: { shopId: id } }),
+    prisma.pointsHistory.deleteMany({ where: { shopId: id } }),
+    // Customer → Pet → (GroomingRecord, Contract, PetServicePrice,
+    // PetMonthlyPlan, BoardingRecord) cascade automatically
+    prisma.customer.deleteMany({ where: { shopId: id } }),
+    prisma.service.deleteMany({ where: { shopId: id } }),
+    prisma.monthlyPlan.deleteMany({ where: { shopId: id } }),
+    prisma.memberLevel.deleteMany({ where: { shopId: id } }),
+    prisma.user.deleteMany({ where: { shopId: id } }),
+    prisma.shop.delete({ where: { id } }),
+  ])
+
+  return NextResponse.json({ ok: true })
+}
