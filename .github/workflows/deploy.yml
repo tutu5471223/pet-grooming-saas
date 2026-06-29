@@ -22,6 +22,7 @@ jobs:
           script: |
             set -e
             cd /var/www/pet-grooming-saas
+            git checkout -- package-lock.json
             git pull
             npm install
             npx prisma generate
