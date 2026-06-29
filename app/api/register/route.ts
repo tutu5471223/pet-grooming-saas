@@ -132,7 +132,18 @@ export async function POST(req: NextRequest) {
       })
     })
 
-    // Notify superadmin
+    // In-app notification for superadmins (stored under shopId "system")
+    await prisma.notification.create({
+      data: {
+        shopId: "system",
+        type: "NEW_SHOP_APPLICATION",
+        title: `新店家申請：${shopName}`,
+        body: "請前往審核",
+        relatedId: shopId,
+      },
+    })
+
+    // Notify superadmin via email
     const appliedAt = new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })
     const adminEmail = process.env.SUPERADMIN_EMAIL ?? "tutu5471223@gmail.com"
     await sendEmail({

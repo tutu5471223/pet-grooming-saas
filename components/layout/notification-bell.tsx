@@ -61,6 +61,9 @@ export function NotificationBell({ collapsed }: { collapsed: boolean }) {
     if (n.type === "BOOKING_REQUEST") {
       setOpen(false)
       router.push("/appointments?view=week")
+    } else if (n.type === "NEW_SHOP_APPLICATION") {
+      setOpen(false)
+      router.push("/superadmin")
     }
   }
 
@@ -102,7 +105,7 @@ export function NotificationBell({ collapsed }: { collapsed: boolean }) {
                   <button
                     key={n.id}
                     onClick={() => handleNotifClick(n)}
-                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${!n.isRead ? "bg-indigo-50" : ""} ${n.type === "BOOKING_REQUEST" ? "cursor-pointer" : "cursor-default"}`}
+                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${!n.isRead ? "bg-indigo-50" : ""} ${n.type === "BOOKING_REQUEST" || n.type === "NEW_SHOP_APPLICATION" ? "cursor-pointer" : "cursor-default"}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <p className={`text-sm font-medium ${!n.isRead ? "text-indigo-900" : "text-gray-900"}`}>
@@ -120,6 +123,9 @@ export function NotificationBell({ collapsed }: { collapsed: boolean }) {
                     </p>
                     {n.type === "BOOKING_REQUEST" && (
                       <p className="text-xs text-indigo-500 mt-1">點擊前往預約排程 →</p>
+                    )}
+                    {n.type === "NEW_SHOP_APPLICATION" && (
+                      <p className="text-xs text-indigo-500 mt-1">點擊前往審核 →</p>
                     )}
                   </button>
                 ))

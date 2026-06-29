@@ -1,21 +1,36 @@
 import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { requireAuth } from "@/lib/auth-guard"
 import { readJson, shortText, longText, z } from "@/lib/validation"
 
+async function getSession() {
+  const session = await auth()
+  if (!session?.user?.shopId) return null
+  return session
+}
+
+function notifWhere(shopId: string, isSuperAdmin: boolean, extraFilter?: object) {
+  const shopIdFilter = isSuperAdmin
+    ? { in: [shopId, "system"] }
+    : shopId
+  return { shopId: shopIdFilter, ...extraFilter }
+}
+
 export async function GET() {
-  const guard = await requireAuth()
-  if (!guard.ok) return guard.response
-  const { shopId } = guard.ctx
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { shopId, isSuperAdmin } = { shopId: session.user.shopId, isSuperAdmin: session.user.isSuperAdmin ?? false }
+  const where = notifWhere(shopId, isSuperAdmin)
 
   try {
     const [notifications, unreadCount] = await Promise.all([
       prisma.notification.findMany({
-        where: { shopId },
+        where,
         orderBy: { createdAt: "desc" },
         take: 20,
       }),
-      prisma.notification.count({ where: { shopId, isRead: false } }),
+      prisma.notification.count({ where: { ...notifWhere(shopId, isSuperAdmin), isRead: false } }),
     ])
     return NextResponse.json({ notifications, unreadCount })
   } catch (error) {
@@ -32,9 +47,9 @@ const createSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const guard = await requireAuth()
-  if (!guard.ok) return guard.response
-  const { shopId } = guard.ctx
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const { shopId } = session.user
 
   try {
     const parsed = await readJson(req, createSchema)
@@ -58,13 +73,14 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH() {
-  const guard = await requireAuth()
-  if (!guard.ok) return guard.response
-  const { shopId } = guard.ctx
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { shopId, isSuperAdmin } = { shopId: session.user.shopId, isSuperAdmin: session.user.isSuperAdmin ?? false }
 
   try {
     await prisma.notification.updateMany({
-      where: { shopId, isRead: false },
+      where: { ...notifWhere(shopId, isSuperAdmin), isRead: false },
       data: { isRead: true },
     })
     return NextResponse.json({ ok: true })
