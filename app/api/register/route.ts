@@ -133,29 +133,26 @@ export async function POST(req: NextRequest) {
     })
 
     // Notify superadmin
-    const superAdmins = await prisma.user.findMany({
-      where: { isSuperAdmin: true },
-      select: { email: true },
+    const appliedAt = new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })
+    const adminEmail = process.env.SUPERADMIN_EMAIL ?? "tutu5471223@gmail.com"
+    await sendEmail({
+      to: adminEmail,
+      subject: "【PetOS71】新店家申請通知",
+      html: `
+        <p>有新店家申請註冊，請前往超級管理後台審核。</p>
+        <table cellpadding="6" style="border-collapse:collapse">
+          <tr><td style="color:#555">店家名稱</td><td><strong>${escapeHtml(shopName)}</strong></td></tr>
+          <tr><td style="color:#555">負責人</td><td>${escapeHtml(ownerName)}</td></tr>
+          <tr><td style="color:#555">電話</td><td>${escapeHtml(phone)}</td></tr>
+          <tr><td style="color:#555">Email</td><td>${escapeHtml(email)}</td></tr>
+          <tr><td style="color:#555">申請時間</td><td>${escapeHtml(appliedAt)}</td></tr>
+          <tr><td style="color:#555">店家 ID</td><td style="font-family:monospace">${escapeHtml(shopId)}</td></tr>
+        </table>
+        <p style="margin-top:16px">
+          <a href="https://petos71.com/admin/shops/${escapeHtml(shopId)}" style="color:#4f46e5">前往審核頁面</a>
+        </p>
+      `,
     })
-    for (const sa of superAdmins) {
-      if (sa.email) {
-        await sendEmail({
-          to: sa.email,
-          subject: `【新店家待審核】${shopName}`,
-          html: `
-            <p>有新店家申請註冊，請前往超級管理後台審核。</p>
-            <ul>
-              <li>店名：${escapeHtml(shopName)}</li>
-              <li>負責人：${escapeHtml(ownerName)}</li>
-              <li>手機：${escapeHtml(phone)}</li>
-              <li>Email：${escapeHtml(email)}</li>
-              <li>縣市：${escapeHtml(city || "未填寫")}</li>
-              <li>店家 ID：${escapeHtml(shopId)}</li>
-            </ul>
-          `,
-        })
-      }
-    }
 
     return NextResponse.json({ ok: true, shopId }, { status: 201 })
   } catch (error) {

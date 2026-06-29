@@ -1,3 +1,5 @@
+import nodemailer from "nodemailer"
+
 interface EmailOptions {
   to: string
   subject: string
@@ -10,12 +12,41 @@ function maskEmail(addr: string): string {
   return `${local.slice(0, 2)}***@${domain}`
 }
 
+function createTransport() {
+  const host = process.env.SMTP_HOST
+  const port = Number(process.env.SMTP_PORT ?? 465)
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+
+  if (!host || !user || !pass) return null
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  })
+}
+
 export async function sendEmail({ to, subject, html }: EmailOptions): Promise<void> {
-  // SMTP implementation would go here when SMTP_HOST is configured.
-  // SEC-7: do not log recipient PII or the full message body in production.
-  if (process.env.NODE_ENV === "production") {
-    console.log(`[Email] queued -> ${maskEmail(to)} | subject="${subject}"`)
+  // SEC-7: do not log full PII or message body in production.
+  const transporter = createTransport()
+
+  if (!transporter) {
+    if (process.env.NODE_ENV === "production") {
+      console.warn(`[Email] SMTP not configured – skipped -> ${maskEmail(to)} | subject="${subject}"`)
+    } else {
+      console.log(`\n📧 [Email – dev stub]\nTo: ${to}\nSubject: ${subject}\n${"─".repeat(40)}\n${html.replace(/<[^>]+>/g, "")}\n${"─".repeat(40)}\n`)
+    }
     return
   }
-  console.log(`\n📧 [Email]\nTo: ${to}\nSubject: ${subject}\n${"─".repeat(40)}\n${html.replace(/<[^>]+>/g, "")}\n${"─".repeat(40)}\n`)
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+    to,
+    subject,
+    html,
+  })
+
+  console.log(`[Email] sent -> ${maskEmail(to)} | subject="${subject}"`)
 }

@@ -16,6 +16,7 @@ interface ShopDetail {
   phone: string | null
   address: string | null
   email: string | null
+  status: string
   createdAt: string
   users: Array<{ id: string; name: string; email: string; role: string; isActive: boolean; isSuperAdmin: boolean }>
   _count: { customers: number; appointments: number }
@@ -74,6 +75,7 @@ export default function AdminShopDetailPage() {
 
   const sub = shop.subscriptions[0]
   const isActive = shop.users.some((u) => u.isActive)
+  const isPending = shop.status === "PENDING"
 
   return (
     <div className="p-6 space-y-6">
@@ -83,7 +85,12 @@ export default function AdminShopDetailPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{shop.name}</h1>
-          <p className="text-sm text-gray-500 font-mono">{shop.id}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-sm text-gray-500 font-mono">{shop.id}</p>
+            {isPending && (
+              <Badge className="bg-yellow-100 text-yellow-700 text-xs">待審核</Badge>
+            )}
+          </div>
         </div>
       </div>
 
@@ -164,6 +171,20 @@ export default function AdminShopDetailPage() {
         <Card>
           <CardHeader><CardTitle className="text-base">店家控制</CardTitle></CardHeader>
           <CardContent className="space-y-4">
+            {isPending && (
+              <div className="rounded-xl bg-yellow-50 border border-yellow-200 px-4 py-3">
+                <p className="text-sm font-medium text-yellow-800 mb-1">此店家申請尚待審核</p>
+                <p className="text-xs text-yellow-600 mb-3">核准後將發送通知 Email 給店家，並啟用其帳號。</p>
+                <Button
+                  size="sm"
+                  onClick={() => doAction("approve_shop")}
+                  disabled={acting}
+                  className="bg-green-600 hover:bg-green-700 text-white w-full"
+                >
+                  核准申請
+                </Button>
+              </div>
+            )}
             <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
               <div>
                 <p className="text-sm font-medium text-gray-900">帳號狀態</p>
