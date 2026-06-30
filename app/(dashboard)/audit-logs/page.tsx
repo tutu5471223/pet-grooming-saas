@@ -1,7 +1,20 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { format } from "date-fns"
 import { ClipboardList, Filter } from "lucide-react"
+
+function formatTaipeiTime(d: Date | string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(d))
+  const v = (type: string) => parts.find(p => p.type === type)?.value ?? "00"
+  return `${v("month")}/${v("day")} ${v("hour")}:${v("minute")}:${v("second")}`
+}
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -125,7 +138,7 @@ export default async function AuditLogsPage({
                     return (
                       <tr key={log.id} className="hover:bg-gray-50/50">
                         <td className="py-3 pr-4 whitespace-nowrap text-gray-500 text-xs">
-                          {format(new Date(log.createdAt), "MM/dd HH:mm:ss")}
+                          {formatTaipeiTime(log.createdAt)}
                         </td>
                         <td className="py-3 pr-4 text-gray-700">
                           {log.user?.name ?? "系統"}
