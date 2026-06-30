@@ -100,6 +100,10 @@ model Customer {
   storedValueHistories StoredValueHistory[]
   sales                Sale[]
 
+  // M5: one customer record per phone per shop. Prevents the find-then-create
+  // race (booking/request) and unconditional duplicate creates from fragmenting
+  // a customer's pets / stored value / points across ghost rows.
+  @@unique([shopId, phone])
   @@index([shopId])
   @@index([phone])
 }
@@ -285,6 +289,8 @@ model Appointment {
   estimatedCost    Float?
   notes            String?
   source           String?
+  // M9: idempotency marker so the reminder cron never double-sends.
+  reminderSentAt   DateTime?
   boardingCheckOut  DateTime?
   boardingRoomId    String?
   boardingRoom      BoardingRoom?    @relation(fields: [boardingRoomId], references: [id])
@@ -509,6 +515,9 @@ model Sale {
 
   items      SaleItem[]
 
+  // L4: mirror Payment's @@index([shopId, paidAt]); sales lists & daily
+  // settlement query by shopId + createdAt range with ORDER BY createdAt.
+  @@index([shopId, createdAt])
   @@index([shopId])
   @@index([customerId])
 }

@@ -1,11 +1,13 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // C1: central guard (401 if no shopId / 403 if shop not ACTIVE).
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   const { searchParams } = new URL(req.url)
   const search = searchParams.get("search")?.trim()
@@ -13,7 +15,7 @@ export async function GET(req: NextRequest) {
   try {
     const pets = await prisma.pet.findMany({
       where: {
-        shopId: session.user.shopId,
+        shopId,
         isActive: true,
         ...(search
           ? {
@@ -26,7 +28,8 @@ export async function GET(req: NextRequest) {
       },
       include: { customer: { select: { name: true } } },
       orderBy: { name: "asc" },
-      take: search ? 20 : undefined,
+      // M10: hard cap — search results 20; full list capped at 500 (was unbounded).
+      take: search ? 20 : 500,
     })
     return NextResponse.json(pets)
   } catch (error) {

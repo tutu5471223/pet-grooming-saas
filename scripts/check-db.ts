@@ -6,7 +6,12 @@ import { PrismaClient } from "../app/generated/prisma/client.js"
 async function main() {
   const url = process.env.DATABASE_URL!
   const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.startsWith("file:")
-  const pool = new Pool({ connectionString: url, ssl: isLocal ? undefined : { rejectUnauthorized: false } })
+  // SEC: verify TLS cert for remote DBs (consistent with lib/prisma.ts buildSsl).
+  const caCert = process.env.DATABASE_CA_CERT
+  const pool = new Pool({
+    connectionString: url,
+    ssl: isLocal ? undefined : caCert ? { rejectUnauthorized: true, ca: caCert } : { rejectUnauthorized: true },
+  })
   const adapter = new PrismaPg(pool)
   const prisma = new PrismaClient({ adapter } as any)
 

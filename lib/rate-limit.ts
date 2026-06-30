@@ -61,15 +61,35 @@ export function rateLimit(key: string, limit: number, windowMs: number): RateLim
   return { allowed: true, remaining: limit - bucket.hits.length, retryAfterSec: 0 }
 }
 
-/** Best-effort client IP from proxy headers (Render / Cloudflare). */
+/**
+ * Best-effort client IP from proxy headers (Render / Cloudflare).
+ *
+ * SEC/M12: the LEFTMOST X-Forwarded-For entry is fully client-controlled — a
+ * caller can prepend an arbitrary IP to evade per-IP rate limits. So we trust,
+ * in order:
+ *   1. cf-connecting-ip / x-real-ip — set directly by the edge/proxy and not
+ *      forwardable by the client.
+ *   2. otherwise the RIGHTMOST X-Forwarded-For entries, which are appended by
+ *      infrastructure closest to us. TRUSTED_PROXY_HOPS (default 1) selects the
+ *      Nth value counting from the right, i.e. the client IP as seen just before
+ *      our own trusted proxy hop(s).
+ */
 export function clientIp(req: Request): string {
+  const cf = req.headers.get("cf-connecting-ip")
+  if (cf) return cf.trim()
+  const real = req.headers.get("x-real-ip")
+  if (real) return real.trim()
+
   const xff = req.headers.get("x-forwarded-for")
-  if (xff) return xff.split(",")[0].trim()
-  return (
-    req.headers.get("cf-connecting-ip") ??
-    req.headers.get("x-real-ip") ??
-    "unknown"
-  )
+  if (xff) {
+    const parts = xff.split(",").map((s) => s.trim()).filter(Boolean)
+    if (parts.length > 0) {
+      const hops = Math.max(1, Math.floor(Number(process.env.TRUSTED_PROXY_HOPS ?? 1)) || 1)
+      const idx = parts.length - hops
+      return parts[idx >= 0 ? idx : 0]
+    }
+  }
+  return "unknown"
 }
 
 /**

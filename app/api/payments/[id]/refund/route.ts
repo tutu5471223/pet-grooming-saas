@@ -91,6 +91,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         })
       }
 
+      // L1: claw back the loyalty points that this collection granted. collect()
+      // awards floor(amount / 100) points (1 per $100), so a refund of `amount`
+      // reverses floor(amount / 100) points — the symmetric inverse. Summing this
+      // over multiple partial refunds can never exceed the points originally
+      // granted (floor(a/100)+floor(b/100) <= floor((a+b)/100)). Clamp to the
+      // customer's current balance so points can never go negative, and use a
+      // guarded updateMany (where points >= clawback) under the row lock.
+      const pointsClawback = Math.floor(amount / 100)
+      if (pointsClawback > 0) {
+        const cust = await tx.customer.findFirst({
+          where: { id: payment.customerId, shopId },
+          select: { points: true },
+        })
+        const actualClawback = Math.min(pointsClawback, cust?.points ?? 0)
+        if (actualClawback > 0) {
+          const decremented = await tx.customer.updateMany({
+            where: { id: payment.customerId, shopId, points: { gte: actualClawback } },
+            data: { points: { decrement: actualClawback } },
+          })
+          if (decremented.count === 1) {
+            await tx.pointsHistory.create({
+              data: {
+                customerId: payment.customerId,
+                shopId,
+                points: -actualClawback,
+                reason: `退款回收點數 ${actualClawback} 點（原付款 #${id.slice(-6)}）`,
+              },
+            })
+          }
+        }
+      }
+
       return refund
     })
 

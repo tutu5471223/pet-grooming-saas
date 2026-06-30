@@ -70,16 +70,30 @@ export function AppointmentActions({
   useEffect(() => { setOptimisticStatus(currentStatus) }, [currentStatus])
 
   async function updateStatus(status: string) {
+    const prev = optimisticStatus
     setOptimisticStatus(status)
     setLoading(true)
-    await fetch(`/api/appointments/${appointmentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    })
-    setLoading(false)
-    router.refresh()
-    if (status === "CONFIRMED" && notifyInfo) setShowNotify(true)
+    try {
+      const res = await fetch(`/api/appointments/${appointmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      if (!res.ok) {
+        // Roll back the optimistic update so the control reflects real state.
+        setOptimisticStatus(prev)
+        const data = await res.json().catch(() => ({}))
+        alert(data.error || "更新狀態失敗")
+        return
+      }
+      router.refresh()
+      if (status === "CONFIRMED" && notifyInfo) setShowNotify(true)
+    } catch {
+      setOptimisticStatus(prev)
+      alert("更新狀態失敗，請重試")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const notifyMsg = notifyInfo ? buildNotificationMessage(notifyInfo) : ""

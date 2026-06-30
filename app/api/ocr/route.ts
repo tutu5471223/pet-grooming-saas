@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-guard"
 import { enforceRateLimit } from "@/lib/rate-limit"
+import { enforceMaxBody } from "@/lib/validation"
 
 interface VisionResponse {
   responses: Array<{
@@ -19,6 +20,10 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 // ~8MB raw image -> base64 inflates ~1.37x. Bound the base64 payload accordingly.
 const MAX_BASE64 = Math.ceil(8 * 1024 * 1024 * 1.37)
+// M11: overall request-body ceiling (base64 + data-URL prefix + JSON wrapper).
+const MAX_BODY_BYTES = MAX_BASE64 + 4096
+// M9: bound the paid upstream Vision call so a hung connection can't suspend us.
+const VISION_TIMEOUT_MS = 15000
 
 export async function POST(req: NextRequest) {
   const guard = await requireAuth()
@@ -29,6 +34,10 @@ export async function POST(req: NextRequest) {
   if (perUser) return perUser
   const perShop = enforceRateLimit(`ocr:shop:day:${shopId}`, PER_SHOP_PER_DAY, DAY_MS)
   if (perShop) return perShop
+
+  // M11: reject oversized bodies via Content-Length before buffering/parsing.
+  const tooLarge = enforceMaxBody(req, MAX_BODY_BYTES)
+  if (tooLarge) return tooLarge
 
   const apiKey = process.env.GOOGLE_VISION_API_KEY
   if (!apiKey) {
@@ -56,6 +65,8 @@ export async function POST(req: NextRequest) {
   }
 
   let visionRes: Response
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), VISION_TIMEOUT_MS)
   try {
     visionRes = await fetch(
       `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
@@ -73,12 +84,16 @@ export async function POST(req: NextRequest) {
             },
           ],
         }),
+        signal: controller.signal,
       }
     )
   } catch (err) {
     // Keep upstream detail server-side only; return a generic message.
-    console.error("[OCR] fetch 呼叫本身失敗（網路錯誤）：", err)
+    // M9: an abort (timeout) lands here too and is treated as unavailable.
+    console.error("[OCR] fetch 呼叫本身失敗（網路錯誤／逾時）：", err)
     return NextResponse.json({ error: "OCR 服務暫時無法使用" }, { status: 503 })
+  } finally {
+    clearTimeout(timeoutId)
   }
 
   if (!visionRes.ok) {

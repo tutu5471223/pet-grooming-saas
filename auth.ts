@@ -84,9 +84,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           },
         })
         if (!dbUser || !dbUser.isActive) {
-          // Invalidate: strip identifying claims so requireAuth() -> 401.
-          token.shopId = undefined
+          // C1: Invalidate completely. Strip EVERY identifying / privilege claim
+          // so a deactivated account cannot (a) slip past a guard with a truthy
+          // session, nor (b) retain `isSuperAdmin` / `role` until JWT expiry.
+          // Clearing token.id also short-circuits this very block next request.
           token.id = undefined
+          token.shopId = undefined
+          token.role = undefined
+          token.shopName = undefined
+          token.shopStatus = undefined
+          token.isSuperAdmin = false
           return token
         }
         token.role = dbUser.role
@@ -102,8 +109,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.role = token.role as string
         session.user.shopId = token.shopId as string
         session.user.shopName = token.shopName as string
-        session.user.shopStatus = token.shopStatus as string
-        session.user.isSuperAdmin = (token.isSuperAdmin as boolean) ?? false
+        session.user.shopStatus = token.shopStatus as string | undefined
+        // Strict boolean: only an explicit `true` claim grants superadmin.
+        session.user.isSuperAdmin = token.isSuperAdmin === true
       }
       return session
     },

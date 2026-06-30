@@ -1,9 +1,25 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
 import { sendLineMessage } from "@/lib/line"
 import { readJson, z, money } from "@/lib/validation"
+
+// M8: known appointment status values (mirrors the UI STATUS_OPTIONS).
+const VALID_STATUSES = ["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"]
+
+// M8: legal status-transition whitelist. COMPLETED is terminal — once an
+// appointment reaches COMPLETED it can never leave, which is what makes the
+// monthly-plan deduction below idempotent (it can never be re-entered, so the
+// session is consumed exactly once). CANCELLED / NO_SHOW may be re-opened.
+const STATUS_TRANSITIONS: Record<string, string[]> = {
+  PENDING: ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"],
+  CONFIRMED: ["IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"],
+  IN_PROGRESS: ["COMPLETED", "CANCELLED", "NO_SHOW"],
+  COMPLETED: [],
+  CANCELLED: ["PENDING", "CONFIRMED"],
+  NO_SHOW: ["PENDING", "CONFIRMED"],
+}
 
 // Non-strict: validate known fields' types/bounds; tolerate extra keys.
 const patchSchema = z.object({
@@ -18,11 +34,11 @@ const patchSchema = z.object({
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   const { id } = await params
-  const shopId = session.user.shopId
 
   const parsed = await readJson(req, patchSchema)
   if (!parsed.ok) return parsed.response
@@ -52,29 +68,57 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "預約時間格式錯誤" }, { status: 400 })
     }
 
-    await prisma.appointment.updateMany({
-      where: { id, shopId },
-      data: {
-        ...(body.status !== undefined && { status: body.status }),
-        ...(body.staffId !== undefined && { staffId: body.staffId ?? null }),
-        ...(body.notes !== undefined && { notes: body.notes }),
-        ...(body.scheduledAt && { scheduledAt: new Date(body.scheduledAt) }),
-        ...(body.services !== undefined && { services: body.services !== null ? JSON.stringify(body.services) : null }),
-        ...(body.estimatedCost !== undefined && { estimatedCost: body.estimatedCost ?? null }),
-        ...(body.duration !== undefined && { duration: body.duration ?? null }),
-        ...(body.petMonthlyPlanId !== undefined && { petMonthlyPlanId: body.petMonthlyPlanId ?? null }),
-      },
-    })
-
-    // Auto-deduct monthly plan session on first completion
-    if (body.status === "COMPLETED" && existing.status !== "COMPLETED" && existing.petMonthlyPlanId) {
-      try {
-        await prisma.petMonthlyPlan.updateMany({
-          where: { id: existing.petMonthlyPlanId, shopId },
-          data: { usedSessions: { increment: 1 } },
-        })
-      } catch { /* plan may have been deleted */ }
+    // M8: reject illegal status transitions. Same-status PATCH and PATCHes that
+    // don't touch status (e.g. editing notes) are always allowed.
+    if (body.status !== undefined && body.status !== existing.status) {
+      if (!VALID_STATUSES.includes(body.status)) {
+        return NextResponse.json({ error: "無效的預約狀態" }, { status: 400 })
+      }
+      const allowed = STATUS_TRANSITIONS[existing.status] ?? []
+      if (!allowed.includes(body.status)) {
+        return NextResponse.json(
+          { error: `不允許的狀態轉移：${existing.status} → ${body.status}` },
+          { status: 400 }
+        )
+      }
     }
+
+    // M8: deduction happens only on the FIRST entry into COMPLETED. Because
+    // COMPLETED is a terminal state (see STATUS_TRANSITIONS), it can never be
+    // re-entered, so the session is consumed exactly once per appointment.
+    const enteringCompleted = body.status === "COMPLETED" && existing.status !== "COMPLETED"
+
+    await prisma.$transaction(async (tx) => {
+      await tx.appointment.updateMany({
+        where: { id, shopId },
+        data: {
+          ...(body.status !== undefined && { status: body.status }),
+          ...(body.staffId !== undefined && { staffId: body.staffId ?? null }),
+          ...(body.notes !== undefined && { notes: body.notes }),
+          ...(body.scheduledAt && { scheduledAt: new Date(body.scheduledAt) }),
+          ...(body.services !== undefined && { services: body.services !== null ? JSON.stringify(body.services) : null }),
+          ...(body.estimatedCost !== undefined && { estimatedCost: body.estimatedCost ?? null }),
+          ...(body.duration !== undefined && { duration: body.duration ?? null }),
+          ...(body.petMonthlyPlanId !== undefined && { petMonthlyPlanId: body.petMonthlyPlanId ?? null }),
+        },
+      })
+
+      // Auto-deduct monthly plan session on first completion (atomic + capped).
+      if (enteringCompleted && existing.petMonthlyPlanId) {
+        const plan = await tx.petMonthlyPlan.findFirst({
+          where: { id: existing.petMonthlyPlanId, shopId },
+          select: { maxSessions: true },
+        })
+        if (plan) {
+          // Guarded increment: the `usedSessions < maxSessions` predicate is the
+          // upper-bound cap and makes the write a no-op once the plan is exhausted.
+          await tx.petMonthlyPlan.updateMany({
+            where: { id: existing.petMonthlyPlanId, shopId, usedSessions: { lt: plan.maxSessions } },
+            data: { usedSessions: { increment: 1 } },
+          })
+        }
+      }
+    })
 
     const updated = await prisma.appointment.findFirst({
       where: { id, shopId },
@@ -143,11 +187,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   const { id } = await params
-  const shopId = session.user.shopId
 
   try {
     await prisma.appointment.deleteMany({ where: { id, shopId } })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth, requireRole } from "@/lib/auth-guard"
+import { writeAudit } from "@/lib/audit"
 import { readJson, money, longText, z } from "@/lib/validation"
 import { round2 } from "@/lib/money"
 
@@ -20,10 +21,10 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
 
-  const shopId = session.user.shopId
+  const shopId = guard.ctx.shopId
   const { id } = await params
 
   const parsed = await readJson(req, updateSchema)
@@ -79,10 +80,12 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // M3: deleting a grooming record can drop its associated payment → OWNER-only.
+  const guard = await requireRole(["OWNER"])
+  if (!guard.ok) return guard.response
 
-  const shopId = session.user.shopId
+  const shopId = guard.ctx.shopId
+  const userId = guard.ctx.userId
   const { id } = await params
 
   try {
@@ -92,11 +95,34 @@ export async function DELETE(
     })
     if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
+    // M3: a settled (PAID) payment must NOT be silently destroyed. The old code
+    // ran tx.payment.delete() unconditionally — for a CREDIT/stored-value payment
+    // that swallows the customer's money with no refund trail. Require an explicit
+    // refund first; only non-PAID (PENDING) payments may be removed with the record.
+    if (record.payment && record.payment.status === "PAID") {
+      return NextResponse.json(
+        { error: "此美容紀錄已付款，請先辦理退款再刪除", code: "PAYMENT_PAID" },
+        { status: 409 }
+      )
+    }
+
     await prisma.$transaction(async (tx) => {
       if (record.payment) {
-        await tx.payment.delete({ where: { id: record.payment.id } })
+        // Only reaches here when status !== "PAID" (PENDING / etc.) → safe to delete.
+        await tx.payment.deleteMany({
+          where: { id: record.payment.id, status: { not: "PAID" } },
+        })
       }
       await tx.groomingRecord.delete({ where: { id } })
+    })
+
+    await writeAudit({
+      shopId,
+      userId,
+      action: "DELETE_GROOMING",
+      resource: "GroomingRecord",
+      resourceId: id,
+      detail: { petId: record.petId, hadPayment: !!record.payment },
     })
 
     return NextResponse.json({ success: true })

@@ -1,7 +1,7 @@
 // SECURITY: shopId forced from session
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
 import { readJson, z, shortText } from "@/lib/validation"
 import { parseMoney, round2 } from "@/lib/money"
 
@@ -18,9 +18,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const shopId = session.user.shopId
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const shopId = guard.ctx.shopId
   const { id: petId } = await params
   const activeOnly = new URL(req.url).searchParams.get("active") === "true"
 
@@ -54,9 +54,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const shopId = session.user.shopId
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const shopId = guard.ctx.shopId
   const { id: petId } = await params
 
   try {

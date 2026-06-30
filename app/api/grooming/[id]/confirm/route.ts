@@ -3,6 +3,7 @@
 // 正確的 viewToken，並以 { id, viewToken } 雙條件查詢，兩者缺一不可。
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { enforceRateLimit, clientIp } from "@/lib/rate-limit"
 
 // base64 PNG of a 600×200 canvas is ~20–80KB; cap at 512KB to block abuse
 const MAX_SIGNATURE_BYTES = 512 * 1024
@@ -11,6 +12,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Public endpoint (no session): throttle per IP to block token-guessing /
+  // brute-force abuse, mirroring app/api/contracts/[id]/sign (5 / 60s).
+  const limited = enforceRateLimit(`grooming-confirm:${clientIp(req)}`, 5, 60_000)
+  if (limited) return limited
+
   try {
     const { id } = await params
     const body = await req.json()

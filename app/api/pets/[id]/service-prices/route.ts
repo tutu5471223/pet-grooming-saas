@@ -1,5 +1,5 @@
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
 import { NextRequest, NextResponse } from "next/server"
 import { readJson, z } from "@/lib/validation"
 import { parseMoney } from "@/lib/money"
@@ -15,9 +15,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const shopId = session.user.shopId
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const shopId = guard.ctx.shopId
   const { id: petId } = await params
 
   try {
@@ -39,9 +39,9 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const shopId = session.user.shopId
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const shopId = guard.ctx.shopId
   const { id: petId } = await params
 
   try {

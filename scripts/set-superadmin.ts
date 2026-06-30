@@ -5,7 +5,23 @@ import { PrismaClient } from "../app/generated/prisma/client.js"
 
 const url = process.env.DATABASE_URL!
 const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.startsWith("file:")
-const pool = new Pool({ connectionString: url, ssl: isLocal ? undefined : { rejectUnauthorized: false } })
+
+// SEC: granting platform-superadmin is a high-privilege action. Require an
+// explicit opt-in before touching a production DB so it can't happen by accident.
+const isRenderProd = url.includes("render.com") || url.includes(".internal")
+if ((isRenderProd || process.env.NODE_ENV === "production") && process.env.ALLOW_PROD_SUPERADMIN !== "true") {
+  console.error("⚠️ 偵測到正式環境 DB：授予平台超管是高權限操作。")
+  console.error("   若確定要在此環境執行，請設定 ALLOW_PROD_SUPERADMIN=true 後重試。")
+  console.error("   例如：ALLOW_PROD_SUPERADMIN=true tsx scripts/set-superadmin.ts <email> [shopId]")
+  process.exit(1)
+}
+
+// SEC: verify TLS cert for remote DBs (consistent with lib/prisma.ts buildSsl).
+const caCert = process.env.DATABASE_CA_CERT
+const pool = new Pool({
+  connectionString: url,
+  ssl: isLocal ? undefined : caCert ? { rejectUnauthorized: true, ca: caCert } : { rejectUnauthorized: true },
+})
 const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter } as any)
 

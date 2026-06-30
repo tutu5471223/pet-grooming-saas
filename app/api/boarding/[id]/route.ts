@@ -64,10 +64,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       if (body.status === "CHECKED_OUT") {
         if (record.roomId) {
-          await tx.boardingRoom.updateMany({
-            where: { id: record.roomId, shopId },
-            data: { status: "AVAILABLE" },
+          // M7: only release the room if no OTHER record is still staying in it,
+          // otherwise we would wrongly mark an occupied room as available.
+          const stillStaying = await tx.boardingRecord.findFirst({
+            where: { roomId: record.roomId, shopId, status: "STAYING", id: { not: id } },
           })
+          if (!stillStaying) {
+            await tx.boardingRoom.updateMany({
+              where: { id: record.roomId, shopId },
+              data: { status: "AVAILABLE" },
+            })
+          }
         }
         // Create payment record on checkout
         if (totalCost && totalCost > 0 && !record.payment) {
@@ -116,10 +123,16 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         data: { status: "CANCELLED" },
       })
       if (record.roomId) {
-        await tx.boardingRoom.updateMany({
-          where: { id: record.roomId, shopId },
-          data: { status: "AVAILABLE" },
+        // M7: only release the room if no OTHER record is still staying in it.
+        const stillStaying = await tx.boardingRecord.findFirst({
+          where: { roomId: record.roomId, shopId, status: "STAYING", id: { not: id } },
         })
+        if (!stillStaying) {
+          await tx.boardingRoom.updateMany({
+            where: { id: record.roomId, shopId },
+            data: { status: "AVAILABLE" },
+          })
+        }
       }
     })
 

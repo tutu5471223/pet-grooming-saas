@@ -5,6 +5,7 @@ import { ContractPDFDownload } from "@/components/contracts/contract-pdf-downloa
 import { ContractRegisterClient } from "@/components/contracts/contract-register-client"
 import { CheckCircle2, Scissors } from "lucide-react"
 import { formatDateTime } from "@/lib/utils"
+import { sanitizeContractHtml } from "@/lib/sanitize"
 
 async function getContractByToken(token: string) {
   return prisma.contract.findUnique({
@@ -124,7 +125,7 @@ export default async function ContractPage({ params }: { params: Promise<{ token
         <div className="rounded-xl border border-gray-200 bg-white p-6">
           <div
             className="prose prose-sm max-w-none text-gray-800"
-            dangerouslySetInnerHTML={{ __html: contract.content }}
+            dangerouslySetInnerHTML={{ __html: sanitizeContractHtml(contract.content) }}
           />
         </div>
 

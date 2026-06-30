@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { enforceRateLimit, clientIp } from "@/lib/rate-limit"
 import { readJson, z, shortText, longText } from "@/lib/validation"
+import { checkCustomerLimit } from "@/lib/subscription-guard"
+
+// L8: collapse duplicate submissions from the same phone+shop within this window.
+const DEDUP_WINDOW_MS = 2 * 60_000
 
 const MAX_SERVICES = 50
 
@@ -51,20 +55,56 @@ export async function POST(
     const shop = await prisma.shop.findUnique({ where: { id: shopId } })
     if (!shop) return NextResponse.json({ error: "找不到店家" }, { status: 404 })
 
-    let customer = await prisma.customer.findFirst({ where: { phone, shopId } })
-    if (!customer) {
-      customer = await prisma.customer.create({
-        data: { name: name.trim(), phone, shopId },
-      })
+    // M6: this is a public endpoint — before minting a brand-new customer,
+    // enforce the shop's plan customer limit (and subscription expiry).
+    const existing = await prisma.customer.findFirst({ where: { phone, shopId } })
+    if (!existing) {
+      const limitCheck = await checkCustomerLimit(shopId)
+      if (!limitCheck.allowed) {
+        return NextResponse.json({ error: limitCheck.message }, { status: 403 })
+      }
     }
+
+    // M5: atomic upsert on @@unique([shopId, phone]) closes the find-then-create
+    // TOCTOU window that previously fragmented a customer into duplicate rows.
+    const customer = await prisma.customer.upsert({
+      where: { shopId_phone: { shopId, phone } },
+      create: { name: name.trim(), phone, shopId },
+      update: {},
+    })
 
     let pet = await prisma.pet.findFirst({
       where: { name: petName.trim(), customerId: customer.id, isActive: true },
     })
     if (!pet) {
-      pet = await prisma.pet.create({
-        data: { name: petName.trim(), species: petSpecies || "犬", customerId: customer.id, shopId },
-      })
+      try {
+        pet = await prisma.pet.create({
+          data: { name: petName.trim(), species: petSpecies || "犬", customerId: customer.id, shopId },
+        })
+      } catch {
+        // A concurrent request may have just created it; re-fetch before giving up.
+        pet = await prisma.pet.findFirst({
+          where: { name: petName.trim(), customerId: customer.id, isActive: true },
+        })
+        if (!pet) throw new Error("pet find-or-create failed")
+      }
+    }
+
+    // L8: if an identical pending request for this pet arrived in the last
+    // few minutes (double-tap / retry), reuse it instead of spawning duplicate
+    // appointments + notifications.
+    const recentDuplicate = await prisma.appointment.findFirst({
+      where: {
+        shopId,
+        petId: pet.id,
+        status: "PENDING",
+        source: "LINE",
+        createdAt: { gte: new Date(Date.now() - DEDUP_WINDOW_MS) },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+    if (recentDuplicate) {
+      return NextResponse.json({ appointmentId: recentDuplicate.id }, { status: 201 })
     }
 
     // All times stored in UTC; explicit +08:00 offset ensures correctness on UTC servers.

@@ -2,10 +2,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAuth } from "@/lib/auth-guard"
+import { round2 } from "@/lib/money"
 import {
   startOfMonth,
   endOfMonth,
-  startOfDay,
   endOfDay,
   subMonths,
   subDays,
@@ -40,24 +40,33 @@ export async function GET(req: NextRequest) {
     monthRevenue,
     boardingRevenueStat,
     monthlyRevenue,
-    paymentMethods,
+    paymentMethodsRaw,
     topServices,
-    dailyRevenue,
+    dailyRevenueRows,
   ] = await Promise.all([
+    // M1: net revenue = sum(amount) - sum(refundedAmount) over original charges
+    // (status PAID/REFUNDED, amount >= 0). The negative reversal rows are excluded
+    // by amount >= 0, so each refund is counted exactly once (via refundedAmount).
     prisma.payment.aggregate({
-      where: { shopId, status: "PAID", paidAt: { gte: monthStart, lte: monthEnd } },
-      _sum: { amount: true },
+      where: {
+        shopId,
+        status: { in: ["PAID", "REFUNDED"] },
+        amount: { gte: 0 },
+        paidAt: { gte: monthStart, lte: monthEnd },
+      },
+      _sum: { amount: true, refundedAmount: true },
       _count: true,
     }),
 
     prisma.payment.aggregate({
       where: {
         shopId,
-        status: "PAID",
+        status: { in: ["PAID", "REFUNDED"] },
+        amount: { gte: 0 },
         paidAt: { gte: monthStart, lte: monthEnd },
         boardingRecordId: { not: null },
       },
-      _sum: { amount: true },
+      _sum: { amount: true, refundedAmount: true },
       _count: true,
     }),
 
@@ -68,17 +77,30 @@ export async function GET(req: NextRequest) {
         const e = endOfMonth(d)
         return prisma.payment
           .aggregate({
-            where: { shopId, status: "PAID", paidAt: { gte: s, lte: e } },
-            _sum: { amount: true },
+            where: {
+              shopId,
+              status: { in: ["PAID", "REFUNDED"] },
+              amount: { gte: 0 },
+              paidAt: { gte: s, lte: e },
+            },
+            _sum: { amount: true, refundedAmount: true },
           })
-          .then((r) => ({ month: format(d, "M月"), revenue: r._sum.amount ?? 0 }))
+          .then((r) => ({
+            month: format(d, "M月"),
+            revenue: round2((r._sum.amount ?? 0) - (r._sum.refundedAmount ?? 0)),
+          }))
       })
     ),
 
     prisma.payment.groupBy({
       by: ["paymentMethod"],
-      where: { shopId, status: "PAID", paidAt: { gte: monthStart, lte: monthEnd } },
-      _sum: { amount: true },
+      where: {
+        shopId,
+        status: { in: ["PAID", "REFUNDED"] },
+        amount: { gte: 0 },
+        paidAt: { gte: monthStart, lte: monthEnd },
+      },
+      _sum: { amount: true, refundedAmount: true },
       _count: true,
     }),
 
@@ -87,21 +109,38 @@ export async function GET(req: NextRequest) {
       select: { services: true, totalCost: true },
     }),
 
-    Promise.all(
-      eachDayOfInterval({ start: monthStart, end: effectiveEnd }).map((d) =>
-        prisma.payment
-          .aggregate({
-            where: {
-              shopId,
-              status: "PAID",
-              paidAt: { gte: startOfDay(d), lte: endOfDay(d) },
-            },
-            _sum: { amount: true },
-          })
-          .then((r) => ({ day: format(d, "d"), revenue: r._sum.amount ?? 0 }))
-      )
-    ),
+    // M13: ONE range query (was up to 31 per-day aggregates). Reduced into per-day
+    // net buckets in memory below.
+    prisma.payment.findMany({
+      where: {
+        shopId,
+        status: { in: ["PAID", "REFUNDED"] },
+        amount: { gte: 0 },
+        paidAt: { gte: monthStart, lte: endOfDay(effectiveEnd) },
+      },
+      select: { paidAt: true, amount: true, refundedAmount: true },
+    }),
   ])
+
+  // M1: net payment-method breakdown (keeps the { paymentMethod, _count, _sum.amount } shape).
+  const paymentMethods = paymentMethodsRaw.map((g) => ({
+    paymentMethod: g.paymentMethod,
+    _count: g._count,
+    _sum: { amount: round2((g._sum.amount ?? 0) - (g._sum.refundedAmount ?? 0)) },
+  }))
+
+  // M13: fold the single dailyRevenue range query into per-day net buckets.
+  const dayBuckets = new Map<string, number>()
+  for (const p of dailyRevenueRows) {
+    if (!p.paidAt) continue
+    const key = format(p.paidAt, "yyyy-MM-dd")
+    const net = (p.amount ?? 0) - (p.refundedAmount ?? 0)
+    dayBuckets.set(key, round2((dayBuckets.get(key) ?? 0) + net))
+  }
+  const dailyRevenue = eachDayOfInterval({ start: monthStart, end: effectiveEnd }).map((d) => ({
+    day: format(d, "d"),
+    revenue: dayBuckets.get(format(d, "yyyy-MM-dd")) ?? 0,
+  }))
 
   // ── Service stats ──────────────────────────────────────────────────────────
   const serviceMap = new Map<string, { count: number; revenue: number }>()
@@ -112,7 +151,9 @@ export async function GET(req: NextRequest) {
       serviceMap.set(svc.name, { count: prev.count + 1, revenue: prev.revenue + svc.price })
     }
   }
-  const boardingRevenue = boardingRevenueStat._sum.amount ?? 0
+  const boardingRevenue = round2(
+    (boardingRevenueStat._sum.amount ?? 0) - (boardingRevenueStat._sum.refundedAmount ?? 0)
+  )
   const boardingCount = boardingRevenueStat._count
 
   // Add boarding as a synthetic service entry
@@ -159,9 +200,14 @@ export async function GET(req: NextRequest) {
       },
       select: { pet: { select: { customerId: true } } },
     }),
+    // M13: previously `date: { lt: monthStart }` with no lower bound pulled the
+    // store's ENTIRE grooming history into memory. Bound it to a 12-month
+    // lookback window and de-dup by pet so "new customer" = no visit in the prior
+    // 12 months (a windowed, explainable definition) instead of an unbounded scan.
     prisma.groomingRecord.findMany({
-      where: { shopId, date: { lt: monthStart } },
-      select: { pet: { select: { customerId: true } } },
+      where: { shopId, date: { gte: subMonths(monthStart, 12), lt: monthStart } },
+      select: { petId: true, pet: { select: { customerId: true } } },
+      distinct: ["petId"],
     }),
   ])
 
@@ -236,8 +282,13 @@ export async function GET(req: NextRequest) {
     expense: monthlyExpense[i]?.expense ?? 0,
   }))
 
+  // M1: net monthly revenue (sum amount - sum refundedAmount).
+  const monthRevenueNet = round2(
+    (monthRevenue._sum.amount ?? 0) - (monthRevenue._sum.refundedAmount ?? 0)
+  )
+
   return NextResponse.json({
-    monthRevenue: monthRevenue._sum.amount ?? 0,
+    monthRevenue: monthRevenueNet,
     monthCount: monthRevenue._count,
     boardingRevenue,
     boardingCount,
@@ -249,7 +300,7 @@ export async function GET(req: NextRequest) {
     customerRetention,
     weekdayAppointments,
     monthExpense,
-    netProfit: (monthRevenue._sum.amount ?? 0) - monthExpense,
+    netProfit: round2(monthRevenueNet - monthExpense),
     expenseByCategory,
     monthlyProfit,
   })

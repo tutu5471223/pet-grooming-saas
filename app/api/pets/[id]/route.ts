@@ -1,7 +1,7 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireAuth } from "@/lib/auth-guard"
 import { readJson, z, shortText } from "@/lib/validation"
 
 const updatePetSchema = z.object({
@@ -47,11 +47,11 @@ const updatePetSchema = z.object({
 })
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
 
   const { id } = await params
-  const shopId = session.user.shopId
+  const { shopId } = guard.ctx
 
   try {
     const pet = await prisma.pet.findFirst({
@@ -85,11 +85,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
 
   const { id } = await params
-  const shopId = session.user.shopId
+  const { shopId } = guard.ctx
 
   const parsed = await readJson(req, updatePetSchema)
   if (!parsed.ok) return parsed.response
@@ -145,11 +145,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
 
   const { id } = await params
-  const shopId = session.user.shopId
+  const { shopId } = guard.ctx
 
   try {
     await prisma.pet.updateMany({

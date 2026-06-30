@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
 
       await tx.pet.updateMany({ where: { customerId: secondaryId, shopId }, data: { customerId: primaryId } })
       await tx.payment.updateMany({ where: { customerId: secondaryId, shopId }, data: { customerId: primaryId } })
+      await tx.sale.updateMany({ where: { customerId: secondaryId, shopId }, data: { customerId: primaryId } })
       await tx.pointsHistory.updateMany({ where: { customerId: secondaryId, shopId }, data: { customerId: primaryId } })
       await tx.storedValueHistory.updateMany({ where: { customerId: secondaryId, shopId }, data: { customerId: primaryId } })
       await tx.customer.update({

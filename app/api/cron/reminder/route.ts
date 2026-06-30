@@ -31,8 +31,15 @@ function authorizeCron(req: NextRequest): NextResponse | null {
 function getTomorrowTaipeiRangeUTC(): { start: Date; end: Date } {
   const taipeiNow = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei" }).format(new Date())
   const [year, month, day] = taipeiNow.split("-").map(Number)
-  const start = new Date(`${year}-${String(month).padStart(2, "0")}-${String(day + 1).padStart(2, "0")}T00:00:00+08:00`)
-  const end   = new Date(`${year}-${String(month).padStart(2, "0")}-${String(day + 1).padStart(2, "0")}T23:59:59+08:00`)
+  // BUGFIX: roll over month/year via a real Date instead of string-concatenating
+  // `day + 1` (which produced e.g. "06-31" = Invalid Date at month end and broke
+  // the whole batch). Date.UTC normalizes the calendar date correctly.
+  const tomorrow = new Date(Date.UTC(year, month - 1, day + 1))
+  const ty = tomorrow.getUTCFullYear()
+  const tm = String(tomorrow.getUTCMonth() + 1).padStart(2, "0")
+  const td = String(tomorrow.getUTCDate()).padStart(2, "0")
+  const start = new Date(`${ty}-${tm}-${td}T00:00:00+08:00`)
+  const end   = new Date(`${ty}-${tm}-${td}T23:59:59+08:00`)
   return { start, end }
 }
 
@@ -47,6 +54,9 @@ export async function GET(req: NextRequest) {
     where: {
       scheduledAt: { gte: start, lte: end },
       status: { in: ["CONFIRMED", "PENDING"] },
+      // M9: skip appointments already reminded (idempotent — avoids re-spamming
+      // if the cron runs twice or both reminder routes are scheduled).
+      reminderSentAt: null,
     },
     include: {
       pet: { include: { customer: true } },
@@ -86,7 +96,15 @@ export async function GET(req: NextRequest) {
     })
 
     const ok = await sendLineMessage(customer.lineUserId, message, appt.shop.lineChannelToken)
-    if (ok) sent++; else failed++
+    if (ok) {
+      // M9: mark as reminded only on success; conditional updateMany keeps this
+      // idempotent so concurrent/duplicate runs can't double-send.
+      await prisma.appointment.updateMany({
+        where: { id: appt.id, reminderSentAt: null },
+        data: { reminderSentAt: new Date() },
+      })
+      sent++
+    } else failed++
   }
 
   console.log(`[CRON/reminder] 完成：成功 ${sent}，失敗 ${failed}`)

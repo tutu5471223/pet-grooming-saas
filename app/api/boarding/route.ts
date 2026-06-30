@@ -79,33 +79,65 @@ export async function POST(req: NextRequest) {
       if (!room) return NextResponse.json({ error: "Room not found" }, { status: 404 })
     }
 
-    const record = await prisma.boardingRecord.create({
-      data: {
-        petId: body.petId,
-        shopId,
-        roomId: body.roomId || null,
-        checkIn: checkInDate,
-        checkOut: checkOutDate,
-        dailyRate: round2(body.dailyRate),
-        notes: body.notes || null,
-        status: "STAYING",
-        priceAdjustment: body.priceAdjustment != null ? round2(body.priceAdjustment) : null,
-        priceAdjustmentNote: body.priceAdjustmentNote || null,
-        addOnServices: body.addOnServices
-          ? JSON.stringify(
-              body.addOnServices.map((a) => ({ ...a, price: round2(a.price) }))
-            )
-          : null,
-      },
-    })
+    const ROOM_OCCUPIED = "ROOM_OCCUPIED"
+    let record
+    try {
+      // M7: do the oversell guard, the record create, and the room-occupy flag
+      // in one transaction so a STAYING record and the OCCUPIED flag stay in sync.
+      record = await prisma.$transaction(async (tx) => {
+        if (body.roomId) {
+          // A room may hold at most one STAYING record. An existing STAYING
+          // record (or an already-OCCUPIED room) means the room is taken.
+          const conflict = await tx.boardingRecord.findFirst({
+            where: { roomId: body.roomId, shopId, status: "STAYING" },
+          })
+          if (conflict) throw new Error(ROOM_OCCUPIED)
+          const room = await tx.boardingRoom.findFirst({
+            where: { id: body.roomId, shopId },
+            select: { status: true },
+          })
+          if (room?.status === "OCCUPIED") throw new Error(ROOM_OCCUPIED)
+        }
 
-    // SECURITY: Update room status using shopId-scoped updateMany to prevent
-    // cross-shop room status tampering if somehow an invalid roomId slipped through.
-    if (body.roomId) {
-      await prisma.boardingRoom.updateMany({
-        where: { id: body.roomId, shopId },
-        data: { status: "OCCUPIED" },
+        const rec = await tx.boardingRecord.create({
+          data: {
+            petId: body.petId,
+            shopId,
+            roomId: body.roomId || null,
+            checkIn: checkInDate,
+            checkOut: checkOutDate,
+            dailyRate: round2(body.dailyRate),
+            notes: body.notes || null,
+            status: "STAYING",
+            priceAdjustment: body.priceAdjustment != null ? round2(body.priceAdjustment) : null,
+            priceAdjustmentNote: body.priceAdjustmentNote || null,
+            addOnServices: body.addOnServices
+              ? JSON.stringify(
+                  body.addOnServices.map((a) => ({ ...a, price: round2(a.price) }))
+                )
+              : null,
+          },
+        })
+
+        // SECURITY: shopId-scoped updateMany prevents cross-shop room tampering
+        // if somehow an invalid roomId slipped through.
+        if (body.roomId) {
+          await tx.boardingRoom.updateMany({
+            where: { id: body.roomId, shopId },
+            data: { status: "OCCUPIED" },
+          })
+        }
+
+        return rec
       })
+    } catch (e) {
+      if (e instanceof Error && e.message === ROOM_OCCUPIED) {
+        return NextResponse.json(
+          { error: "此房間目前已有住宿中的寵物，無法重複入住" },
+          { status: 409 }
+        )
+      }
+      throw e
     }
 
     return NextResponse.json(record, { status: 201 })

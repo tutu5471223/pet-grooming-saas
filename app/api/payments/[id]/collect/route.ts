@@ -72,12 +72,35 @@ export async function POST(
     })
     if (!payment) return NextResponse.json({ error: "找不到待收款紀錄" }, { status: 404 })
 
+    // M2: the DB payment.billingType is authoritative for PACKAGE receivables.
+    // A monthly-plan package purchase is created (in /pets/[id]/monthly-plans)
+    // with billingType "MONTHLY_PLAN" and amount = maxSessions * pricePerSession
+    // (the FULL package price). It MUST be collected at that stored amount. The
+    // client must not be able to re-bill it through the per-session override
+    // paths (MONTHLY_PLAN consumption / NEW_MONTHLY_PLAN), which would slash
+    // finalAmount down to a single session price = silent under-collection.
+    // Such a receivable may only be settled at full amount by cash/card (SINGLE)
+    // or stored value (CREDIT). Plain SINGLE receivables are unaffected, so the
+    // legitimate "apply this charge to a plan" and NEW_MONTHLY_PLAN flows still work.
+    if (
+      payment.billingType === "MONTHLY_PLAN" &&
+      billingType !== "SINGLE" &&
+      billingType !== "CREDIT"
+    ) {
+      return NextResponse.json(
+        { error: "包月方案應收款須以全額收取（現金或儲值），不可逐次扣抵" },
+        { status: 400 }
+      )
+    }
+
     const customerId = payment.customerId
     const petId = payment.petId
 
     const result = await prisma.$transaction(async (tx) => {
       let finalAmount = round2(payment.amount)
-      let resolvedMonthlyPlanId: string | null = null
+      // Preserve any existing plan link (e.g. a package receivable settled as
+      // SINGLE/CREDIT). The consumption / new-plan branches reassign this below.
+      let resolvedMonthlyPlanId: string | null = payment.monthlyPlanId ?? null
 
       if (billingType === "CREDIT") {
         // Re-read balance inside the tx.
