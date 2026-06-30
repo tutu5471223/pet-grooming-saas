@@ -10,6 +10,7 @@ const createCustomerSchema = z.object({
   name: shortText.min(1),
   phone: phone,
   lineId: z.string().trim().max(100).optional().nullable(),
+  idNumber: shortText.optional().nullable(),
   address: shortText.optional().nullable(),
   notes: z.string().trim().max(2000).optional().nullable(),
 })
@@ -74,6 +75,7 @@ export async function POST(req: NextRequest) {
         name: body.name,
         phone: body.phone,
         lineId: body.lineId || null,
+        idNumber: body.idNumber || null,
         address: body.address || null,
         notes: body.notes || null,
         shopId,

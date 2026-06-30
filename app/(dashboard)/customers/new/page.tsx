@@ -80,6 +80,7 @@ export default function NewCustomerPage() {
     name: "",
     phone: "",
     lineId: "",
+    idNumber: "",
     address: "",
     notes: "",
   })
@@ -143,6 +144,7 @@ export default function NewCustomerPage() {
         name: parsed.name,
         phone: parsed.phone,
         lineId: parsed.lineId,
+        idNumber: "",
         address: parsed.address,
         notes: "",
       })
@@ -349,14 +351,25 @@ export default function NewCustomerPage() {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="address">地址</Label>
-              <Input
-                id="address"
-                placeholder="客人地址（選填）"
-                value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="idNumber">身分證字號</Label>
+                <Input
+                  id="idNumber"
+                  placeholder="A123456789（選填）"
+                  value={form.idNumber}
+                  onChange={(e) => setForm({ ...form, idNumber: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="address">地址</Label>
+                <Input
+                  id="address"
+                  placeholder="客人地址（選填）"
+                  value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                />
+              </div>
             </div>
 
             <div className="space-y-1.5">
