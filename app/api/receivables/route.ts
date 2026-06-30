@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const requestedStatus = searchParams.get("status") ?? "PENDING"
   // Whitelist status filter to avoid arbitrary value injection into the query.
-  const status = ["PENDING", "PAID", "REFUNDED"].includes(requestedStatus)
+  const status = ["PENDING", "PAID", "REFUNDED", "VOIDED"].includes(requestedStatus)
     ? requestedStatus
     : "PENDING"
 

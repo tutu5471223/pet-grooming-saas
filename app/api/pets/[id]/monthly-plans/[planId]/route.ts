@@ -121,7 +121,16 @@ export async function DELETE(
     })
     if (!plan) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    await prisma.petMonthlyPlan.delete({ where: { id: planId } })
+    await prisma.$transaction(async (tx) => {
+      // Void PENDING payments linked to this plan before deleting so they
+      // don't become orphaned receivables in the AR list.
+      await tx.payment.updateMany({
+        where: { monthlyPlanId: planId, shopId, status: "PENDING" },
+        data: { status: "VOIDED", notes: "包月方案已刪除，自動作廢" },
+      })
+      await tx.petMonthlyPlan.delete({ where: { id: planId } })
+    })
+
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error("DELETE /api/pets/[id]/monthly-plans/[planId]", error)

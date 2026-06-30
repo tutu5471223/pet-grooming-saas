@@ -17,7 +17,8 @@ export default async function ReceivablesPage({
 
   const shopId = session.user.shopId
   const { status: rawStatus } = await searchParams
-  const status: "PENDING" | "PAID" = rawStatus === "PAID" ? "PAID" : "PENDING"
+  const status: "PENDING" | "PAID" | "VOIDED" =
+    rawStatus === "PAID" ? "PAID" : rawStatus === "VOIDED" ? "VOIDED" : "PENDING"
 
   const payments = await prisma.payment.findMany({
     where: { shopId, status },
@@ -32,6 +33,7 @@ export default async function ReceivablesPage({
   const items = payments.map((p) => ({
     ...p,
     paidAt: p.paidAt?.toISOString() ?? null,
+    createdAt: p.createdAt.toISOString(),
     groomingRecord: p.groomingRecord ? { ...p.groomingRecord, date: p.groomingRecord.date.toISOString() } : null,
     boardingRecord: p.boardingRecord ? {
       checkIn: p.boardingRecord.checkIn.toISOString(),
@@ -39,8 +41,10 @@ export default async function ReceivablesPage({
     } : null,
   }))
 
-  const totalPending = items.filter((i) => i.status === "PENDING").reduce((s, i) => s + i.amount, 0)
-  const overdueCount = items.filter((i) => i.paidAt && differenceInDays(new Date(), new Date(i.paidAt)) > 30).length
+  const totalPending = status === "PENDING" ? items.reduce((s, i) => s + i.amount, 0) : 0
+  const overdueCount = status === "PENDING"
+    ? items.filter((i) => i.createdAt && differenceInDays(new Date(), new Date(i.createdAt)) > 30).length
+    : 0
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">

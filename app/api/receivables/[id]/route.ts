@@ -6,7 +6,7 @@ import { requireRole } from "@/lib/auth-guard"
 import { readJson, z } from "@/lib/validation"
 
 const patchSchema = z.object({
-  status: z.enum(["PENDING", "PAID"]).optional(),
+  status: z.enum(["PENDING", "PAID", "VOIDED"]).optional(),
   paymentMethod: z.string().trim().max(50).optional(),
   notes: z.string().trim().max(5000).nullable().optional(),
 })
@@ -24,10 +24,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = parsed.data
 
   const markingPaid = body.status === "PAID"
+  const markingVoided = body.status === "VOIDED"
 
   try {
     const existing = await prisma.payment.findFirst({ where: { id, shopId } })
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    // Void: mark as VOIDED regardless of current status (idempotent, no side effects).
+    if (markingVoided) {
+      if (existing.status === "VOIDED") {
+        return NextResponse.json(existing)
+      }
+      await prisma.payment.updateMany({
+        where: { id, shopId },
+        data: { status: "VOIDED" },
+      })
+      await writeAudit({
+        shopId,
+        userId,
+        action: "VOID_RECEIVABLE",
+        resource: "Payment",
+        resourceId: id,
+        detail: { amount: existing.amount, previousStatus: existing.status },
+      })
+      const voided = await prisma.payment.findFirst({ where: { id, shopId } })
+      return NextResponse.json(voided)
+    }
 
     // Settling CREDIT / MONTHLY_PLAN receivables has accounting side effects
     // (stored-value deduction, monthly-plan session consumption, points) that
