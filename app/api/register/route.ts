@@ -132,38 +132,51 @@ export async function POST(req: NextRequest) {
       })
     })
 
+    // M15: registration is committed — everything below is a best-effort
+    // post-commit side effect (superadmin notification + email). A failure here
+    // must NOT roll back the account or surface as a 500; the client should get
+    // its 201 with shopId regardless. So each side effect swallows + logs.
+
     // In-app notification for superadmins (stored under shopId "system")
-    await prisma.notification.create({
-      data: {
-        shopId: "system",
-        type: "NEW_SHOP_APPLICATION",
-        title: `新店家申請：${shopName}`,
-        body: "請前往審核",
-        relatedId: shopId,
-      },
-    })
+    try {
+      await prisma.notification.create({
+        data: {
+          shopId: "system",
+          type: "NEW_SHOP_APPLICATION",
+          title: `新店家申請：${shopName}`,
+          body: "請前往審核",
+          relatedId: shopId,
+        },
+      })
+    } catch (err) {
+      console.error("POST /api/register notification (best-effort)", err)
+    }
 
     // Notify superadmin via email
-    const appliedAt = new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })
-    const adminEmail = process.env.SUPERADMIN_EMAIL ?? "tutu5471223@gmail.com"
-    await sendEmail({
-      to: adminEmail,
-      subject: "【PetOS71】新店家申請通知",
-      html: `
-        <p>有新店家申請註冊，請前往超級管理後台審核。</p>
-        <table cellpadding="6" style="border-collapse:collapse">
-          <tr><td style="color:#555">店家名稱</td><td><strong>${escapeHtml(shopName)}</strong></td></tr>
-          <tr><td style="color:#555">負責人</td><td>${escapeHtml(ownerName)}</td></tr>
-          <tr><td style="color:#555">電話</td><td>${escapeHtml(phone)}</td></tr>
-          <tr><td style="color:#555">Email</td><td>${escapeHtml(email)}</td></tr>
-          <tr><td style="color:#555">申請時間</td><td>${escapeHtml(appliedAt)}</td></tr>
-          <tr><td style="color:#555">店家 ID</td><td style="font-family:monospace">${escapeHtml(shopId)}</td></tr>
-        </table>
-        <p style="margin-top:16px">
-          <a href="https://petos71.com/admin/shops/${escapeHtml(shopId)}" style="color:#4f46e5">前往審核頁面</a>
-        </p>
-      `,
-    })
+    try {
+      const appliedAt = new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })
+      const adminEmail = process.env.SUPERADMIN_EMAIL ?? "tutu5471223@gmail.com"
+      await sendEmail({
+        to: adminEmail,
+        subject: "【PetOS71】新店家申請通知",
+        html: `
+          <p>有新店家申請註冊，請前往超級管理後台審核。</p>
+          <table cellpadding="6" style="border-collapse:collapse">
+            <tr><td style="color:#555">店家名稱</td><td><strong>${escapeHtml(shopName)}</strong></td></tr>
+            <tr><td style="color:#555">負責人</td><td>${escapeHtml(ownerName)}</td></tr>
+            <tr><td style="color:#555">電話</td><td>${escapeHtml(phone)}</td></tr>
+            <tr><td style="color:#555">Email</td><td>${escapeHtml(email)}</td></tr>
+            <tr><td style="color:#555">申請時間</td><td>${escapeHtml(appliedAt)}</td></tr>
+            <tr><td style="color:#555">店家 ID</td><td style="font-family:monospace">${escapeHtml(shopId)}</td></tr>
+          </table>
+          <p style="margin-top:16px">
+            <a href="https://petos71.com/admin/shops/${escapeHtml(shopId)}" style="color:#4f46e5">前往審核頁面</a>
+          </p>
+        `,
+      })
+    } catch (err) {
+      console.error("POST /api/register email (best-effort)", err)
+    }
 
     return NextResponse.json({ ok: true, shopId }, { status: 201 })
   } catch (error) {

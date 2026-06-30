@@ -21,7 +21,13 @@ if ((isRenderProd || isProd) && !allowSeed) {
 }
 
 const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.startsWith("file:")
-const pool = new Pool({ connectionString: url, ssl: isLocal ? undefined : { rejectUnauthorized: false } })
+// SEC: verify TLS cert for remote DBs (consistent with lib/prisma.ts buildSsl).
+// Provide a private-CA PEM via DATABASE_CA_CERT when needed.
+const caCert = process.env.DATABASE_CA_CERT
+const pool = new Pool({
+  connectionString: url,
+  ssl: isLocal ? undefined : caCert ? { rejectUnauthorized: true, ca: caCert } : { rejectUnauthorized: true },
+})
 const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter } as any)
 
@@ -184,10 +190,12 @@ async function main() {
   const ownerPw = await bcrypt.hash(seedPassword("SEED_OWNER_PASSWORD", `店主 ${OWNER_EMAIL}`), 12)
   const owner = await prisma.user.upsert({
     where: { email_shopId: { email: OWNER_EMAIL, shopId: SHOP_ID } },
-    update: { password: ownerPw, isSuperAdmin: true, isActive: true },
+    // SEC: demo shop OWNER is a regular tenant owner, NOT a platform superadmin.
+    // Platform superadmin is reserved for the system shop account above.
+    update: { password: ownerPw, isSuperAdmin: false, isActive: true },
     create: {
       name: "Tutu 老闆", email: OWNER_EMAIL, password: ownerPw,
-      role: "OWNER", shopId: SHOP_ID, isSuperAdmin: true, isActive: true,
+      role: "OWNER", shopId: SHOP_ID, isSuperAdmin: false, isActive: true,
     },
   })
 

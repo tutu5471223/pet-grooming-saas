@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { enforceRateLimit, clientIp } from "@/lib/rate-limit"
 import { readJson, z, shortText } from "@/lib/validation"
 import { sanitizeContractHtml } from "@/lib/sanitize"
+import { checkCustomerLimit, checkPetLimit } from "@/lib/subscription-guard"
 
 // data: URLs for signatures can be large; cap to a sane upper bound.
 const MAX_SIGNATURE_LEN = 2_000_000
@@ -19,7 +20,9 @@ const registerSchema = z.object({
   signerName: shortText.optional(),
   signatureUrl: z.string().min(1).max(MAX_SIGNATURE_LEN),
   // 個性標籤
-  personality: z.array(z.string()).optional(),
+  // L3: cap array length + element size so a public submission cannot store an
+  // arbitrarily large JSON blob (neighbouring fields are already bounded).
+  personality: z.array(z.string().max(50)).max(30).optional(),
   // 身體狀況
   boneIssue: z.boolean().optional(),
   boneNote: shortText.nullish(),
@@ -78,9 +81,21 @@ export async function POST(
     })
     if (!shop) return NextResponse.json({ error: "找不到店家" }, { status: 404 })
 
+    // M6: public endpoint — every registration creates a pet, so enforce the
+    // plan pet limit (and subscription expiry) up front.
+    const petLimitCheck = await checkPetLimit(shopId)
+    if (!petLimitCheck.allowed) {
+      return NextResponse.json({ error: petLimitCheck.message }, { status: 403 })
+    }
+
     // Upsert customer by phone+shopId
     let customer = await prisma.customer.findFirst({ where: { phone, shopId } })
     if (!customer) {
+      // M6: only gate brand-new customers against the plan customer limit.
+      const customerLimitCheck = await checkCustomerLimit(shopId)
+      if (!customerLimitCheck.allowed) {
+        return NextResponse.json({ error: customerLimitCheck.message }, { status: 403 })
+      }
       customer = await prisma.customer.create({
         data: {
           name: name.trim(),

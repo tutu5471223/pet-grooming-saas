@@ -1,9 +1,8 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { writeAudit } from "@/lib/audit"
-import { requireRole } from "@/lib/auth-guard"
+import { requireAuth, requireRole } from "@/lib/auth-guard"
 import { readJson, z, shortText, phone } from "@/lib/validation"
 
 // Non-strict: validate the known fields we read, allow extra keys from the UI.
@@ -20,11 +19,11 @@ const updateCustomerSchema = z.object({
 })
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
 
   const { id } = await params
-  const shopId = session.user.shopId
+  const { shopId } = guard.ctx
 
   try {
     const customer = await prisma.customer.findFirst({
@@ -60,11 +59,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
 
   const { id } = await params
-  const shopId = session.user.shopId
+  const { shopId, userId } = guard.ctx
 
   const parsed = await readJson(req, updateCustomerSchema)
   if (!parsed.ok) return parsed.response
@@ -88,7 +87,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     await writeAudit({
       shopId,
-      userId: session.user.id,
+      userId,
       action: "UPDATE_CUSTOMER",
       resource: "Customer",
       resourceId: id,
@@ -103,7 +102,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  // AUTH-1: destructive cascade delete is OWNER-only.
+  // AUTH-1: destructive operation is OWNER-only.
   const guard = await requireRole(["OWNER"])
   if (!guard.ok) return guard.response
 
@@ -111,66 +110,30 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { shopId, userId } = guard.ctx
 
   try {
-  const customer = await prisma.customer.findFirst({ where: { id, shopId } })
-  if (!customer) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    // M4: 軟刪而非硬刪。原本在交易內 tx.payment.deleteMany 會把真錢 Payment 紀錄
+    // 一併硬刪、繞過 Payment 的 ON DELETE RESTRICT，等於無痕抹掉財務紀錄。
+    // 改為將 customer.status 設為 ARCHIVED，保留所有 payment / pet / 點數 / 儲值歷史
+    // （比照 merge 的 MERGED 處理）。列表查詢應比照過濾 MERGED 一併過濾 ARCHIVED
+    //  —— 該過濾由列表端 (A1) 負責，本檔不更動其他檔。
+    const customer = await prisma.customer.findFirst({ where: { id, shopId } })
+    if (!customer) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  await prisma.$transaction(async (tx) => {
-    // Step 1: 取得此客人所有 Pet 的 id
-    const petIds = (
-      await tx.pet.findMany({ where: { customerId: id }, select: { id: true } })
-    ).map((p) => p.id)
+    // 冪等：updateMany 帶 shopId 條件，重複呼叫只是再次設為 ARCHIVED，不會誤動別店資料。
+    await prisma.customer.updateMany({
+      where: { id, shopId },
+      data: { status: "ARCHIVED" },
+    })
 
-    // Step 2: 取得這些 Pet 的所有 BoardingRecord id（刪 BoardingDailyLog 需要）
-    const boardingRecordIds =
-      petIds.length > 0
-        ? (
-            await tx.boardingRecord.findMany({
-              where: { petId: { in: petIds } },
-              select: { id: true },
-            })
-          ).map((r) => r.id)
-        : []
+    await writeAudit({
+      shopId,
+      userId,
+      action: "ARCHIVE_CUSTOMER",
+      resource: "Customer",
+      resourceId: id,
+      detail: { name: customer.name },
+    })
 
-    // Step 3: 刪 Payment（groomingRecordId / boardingRecordId 外鍵，必須在刪 GroomingRecord /
-    //         BoardingRecord 之前清除，否則外鍵約束會報錯）
-    await tx.payment.deleteMany({ where: { customerId: id } })
-
-    // Step 4: 刪 BoardingDailyLog（SQLite 不保證 cascade，明確刪除）
-    if (boardingRecordIds.length > 0) {
-      await tx.boardingDailyLog.deleteMany({
-        where: { boardingRecordId: { in: boardingRecordIds } },
-      })
-    }
-
-    // Step 5: 刪 Pet 的其他關聯資料
-    if (petIds.length > 0) {
-      await tx.boardingRecord.deleteMany({ where: { petId: { in: petIds } } })
-      await tx.groomingRecord.deleteMany({ where: { petId: { in: petIds } } })
-      await tx.contract.deleteMany({ where: { petId: { in: petIds } } })
-      await tx.appointment.deleteMany({ where: { petId: { in: petIds } } })
-    }
-
-    // Step 6: 刪客人直接關聯資料
-    await tx.pointsHistory.deleteMany({ where: { customerId: id } })
-    await tx.storedValueHistory.deleteMany({ where: { customerId: id } })
-
-    // Step 7: 刪所有 Pet
-    await tx.pet.deleteMany({ where: { customerId: id } })
-
-    // Step 8: 刪 Customer
-    await tx.customer.delete({ where: { id } })
-  })
-
-  await writeAudit({
-    shopId,
-    userId,
-    action: "DELETE_CUSTOMER",
-    resource: "Customer",
-    resourceId: id,
-    detail: { name: customer.name },
-  })
-
-  return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true })
   } catch (error) {
     console.error("DELETE /api/customers/[id]", error)
     return NextResponse.json({ error: "操作失敗，請稍後再試" }, { status: 500 })

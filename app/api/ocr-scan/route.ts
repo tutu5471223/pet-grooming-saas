@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth-guard"
 import { enforceRateLimit } from "@/lib/rate-limit"
+import { enforceMaxBody } from "@/lib/validation"
 import { z } from "zod"
 import Anthropic from "@anthropic-ai/sdk"
 
@@ -15,6 +16,10 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 // ~8MB raw image -> base64 inflates ~1.37x.
 const MAX_BASE64 = Math.ceil(8 * 1024 * 1024 * 1.37)
+// M11: overall request-body ceiling (base64 + JSON wrapper).
+const MAX_BODY_BYTES = MAX_BASE64 + 4096
+// M9: bound the paid upstream Anthropic call (and disable retry-multiplying).
+const OCR_TIMEOUT_MS = 30000
 
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const
 type AllowedMime = (typeof ALLOWED_MIME)[number]
@@ -64,6 +69,10 @@ export async function POST(req: NextRequest) {
   const perShop = enforceRateLimit(`ocr-scan:shop:day:${shopId}`, PER_SHOP_PER_DAY, DAY_MS)
   if (perShop) return perShop
 
+  // M11: reject oversized bodies via Content-Length before buffering/parsing.
+  const tooLarge = enforceMaxBody(req, MAX_BODY_BYTES)
+  if (tooLarge) return tooLarge
+
   let image: string, mimeType: string | undefined
   try {
     const body = await req.json() as { image?: unknown; mimeType?: unknown }
@@ -90,6 +99,7 @@ export async function POST(req: NextRequest) {
     response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1024,
+      // (request options below: M9 timeout)
       system:
         "你是一個寵物美容店的資料辨識助手。請從圖片中辨識客人和寵物的資料，以 JSON 格式回傳。若某欄位看不清楚或不存在請填 null。",
       messages: [
@@ -133,7 +143,7 @@ export async function POST(req: NextRequest) {
           ],
         },
       ],
-    })
+    }, { timeout: OCR_TIMEOUT_MS, maxRetries: 0 })
   } catch (err) {
     console.error("Anthropic API error:", err)
     return NextResponse.json({ error: "OCR 服務暫時無法使用，請稍後重試" }, { status: 503 })

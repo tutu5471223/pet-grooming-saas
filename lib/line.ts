@@ -24,6 +24,10 @@ export async function sendLineMessage(
     console.log("[LINE] 無 lineUserId，略過發送")
     return false
   }
+  // M9: bound the upstream call so a slow/hung LINE API can't suspend the
+  // request for minutes. Timeout aborts the fetch and is treated as a failure.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/push", {
       method: "POST",
@@ -35,6 +39,7 @@ export async function sendLineMessage(
         to: lineUserId,
         messages: [{ type: "text", text }],
       }),
+      signal: controller.signal,
     })
     if (!res.ok) {
       const errText = await res.text()
@@ -47,6 +52,8 @@ export async function sendLineMessage(
   } catch (err) {
     console.error("[LINE] push error:", err)
     return false
+  } finally {
+    clearTimeout(timeout)
   }
 }
 

@@ -5,6 +5,7 @@ import { nanoid } from "nanoid"
 import { requireAuth } from "@/lib/auth-guard"
 import { readJson, z, shortText } from "@/lib/validation"
 import { sanitizeContractHtml } from "@/lib/sanitize"
+import { checkPetLimit } from "@/lib/subscription-guard"
 
 const createPetSchema = z.object({
   customerId: z.string().min(1),
@@ -63,6 +64,12 @@ export async function POST(req: NextRequest) {
       where: { id: body.customerId, shopId },
     })
     if (!customer) return NextResponse.json({ error: "Customer not found" }, { status: 404 })
+
+    // M6: enforce plan pet limit (and subscription expiry) before creating a pet.
+    const limitCheck = await checkPetLimit(shopId)
+    if (!limitCheck.allowed) {
+      return NextResponse.json({ error: limitCheck.message }, { status: 403 })
+    }
 
     // Fetch shop template once before transaction
     const shop = await prisma.shop.findUnique({

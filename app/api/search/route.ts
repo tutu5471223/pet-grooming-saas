@@ -16,7 +16,8 @@ export async function GET(req: NextRequest) {
       prisma.customer.findMany({
         where: {
           shopId,
-          status: { not: "MERGED" },
+          // Exclude MERGED zombies and ARCHIVED (soft-deleted, M4) customers.
+          status: { notIn: ["MERGED", "ARCHIVED"] },
           OR: [{ name: { contains: q } }, { phone: { contains: q } }],
         },
         select: { id: true, name: true, phone: true, flagType: true },

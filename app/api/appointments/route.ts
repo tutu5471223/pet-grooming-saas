@@ -1,6 +1,6 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
 import { startOfDay, endOfDay, addMinutes } from "date-fns"
 import { writeAudit } from "@/lib/audit"
@@ -23,11 +23,15 @@ const createSchema = z.object({
   petMonthlyPlanId: z.string().min(1).optional().nullable(),
 })
 
-export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+// M10: hard cap on an unbounded list. Day/week queries are already time-bounded;
+// this protects the "no date/week filter" path from returning the whole table.
+const MAX_LIST = 1000
 
-  const shopId = session.user.shopId
+export async function GET(req: NextRequest) {
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
+
   const { searchParams } = new URL(req.url)
   const date = searchParams.get("date")
   const status = searchParams.get("status")
@@ -52,6 +56,7 @@ export async function GET(req: NextRequest) {
         staff: true,
       },
       orderBy: { scheduledAt: "asc" },
+      take: MAX_LIST,
     })
 
     return NextResponse.json(appointments)
@@ -62,10 +67,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const shopId = session.user.shopId
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId, userId } = guard.ctx
 
   const parsed = await readJson(req, createSchema)
   if (!parsed.ok) return parsed.response
@@ -170,7 +174,7 @@ export async function POST(req: NextRequest) {
 
     await writeAudit({
       shopId,
-      userId: session.user.id,
+      userId,
       action: "CREATE_APPOINTMENT",
       resource: "Appointment",
       resourceId: appointment.id,

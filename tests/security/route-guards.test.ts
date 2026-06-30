@@ -45,7 +45,9 @@ const db = prisma as any
 
 const SHOP_A = "shop-A"
 function session(role: string, shopId = SHOP_A, extra: Record<string, unknown> = {}) {
-  return { user: { id: "u1", name: "T", email: "t@x.com", role, shopId, isSuperAdmin: false, ...extra } }
+  // shopStatus defaults to ACTIVE: requireAuth() now enforces shop status (H2),
+  // so a realistic active-shop session must carry it. Override via `extra`.
+  return { user: { id: "u1", name: "T", email: "t@x.com", role, shopId, isSuperAdmin: false, shopStatus: "ACTIVE", ...extra } }
 }
 function jsonReq(url: string, method: string, body?: unknown) {
   return new NextRequest(`http://localhost${url}`, {
@@ -174,5 +176,41 @@ describe("Tenant scoping — reads are constrained to the session shop", () => {
     expect(db.customer.findFirst).toHaveBeenCalled()
     const arg = db.customer.findFirst.mock.calls[0][0]
     expect(arg.where).toMatchObject({ id: "c1", shopId: SHOP_A })
+  })
+})
+
+describe("Shop status & revocation are enforced at the API surface (C1 + H2)", () => {
+  it("H2: a non-ACTIVE (SUSPENDED) shop is rejected with 403", async () => {
+    mockAuth.mockResolvedValue(session("OWNER", SHOP_A, { shopStatus: "SUSPENDED" }))
+    db.customer.findFirst.mockResolvedValue(null)
+    const { GET } = await import("@/app/api/customers/[id]/route")
+    const res = await GET(jsonReq("/api/customers/c1", "GET"), params({ id: "c1" }))
+    expect(res.status).toBe(403)
+    // The guard must short-circuit BEFORE any tenant query runs.
+    expect(db.customer.findFirst).not.toHaveBeenCalled()
+  })
+
+  it("H2: a PENDING (unapproved) shop is rejected with 403", async () => {
+    mockAuth.mockResolvedValue(session("OWNER", SHOP_A, { shopStatus: "PENDING" }))
+    const { GET } = await import("@/app/api/customers/route")
+    const res = await GET(jsonReq("/api/customers", "GET"))
+    expect(res.status).toBe(403)
+  })
+
+  it("C1: a deactivated account (stripped shopId claim) is rejected with 401", async () => {
+    // auth.ts clears shopId/id (and isSuperAdmin) for a deactivated user; the
+    // session object stays truthy, so the guard must reject on the missing claim.
+    mockAuth.mockResolvedValue({ user: { id: undefined, shopId: undefined, isSuperAdmin: false } })
+    const { GET } = await import("@/app/api/customers/route")
+    const res = await GET(jsonReq("/api/customers", "GET"))
+    expect(res.status).toBe(401)
+  })
+
+  it("superadmin bypasses the shop-status gate even when the shop is SUSPENDED", async () => {
+    mockAuth.mockResolvedValue(session("OWNER", SHOP_A, { isSuperAdmin: true, shopStatus: "SUSPENDED" }))
+    db.customer.findMany.mockResolvedValue([])
+    const { GET } = await import("@/app/api/customers/route")
+    const res = await GET(jsonReq("/api/customers", "GET"))
+    expect(res.status).toBe(200)
   })
 })

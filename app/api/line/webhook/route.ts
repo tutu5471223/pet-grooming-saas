@@ -61,7 +61,7 @@ async function processEvents(events: LineEvent[]) {
       if (event.replyToken) {
         await replyMessage(
           event.replyToken,
-          "您好！感謝關注我們的 LINE 官方帳號 🐾\n\n請傳送您在本店登記的手機號碼（格式：09xxxxxxxx），即可連結您的帳號，之後將自動收到預約確認、美容完工等通知。"
+          "您好！感謝關注我們的 LINE 官方帳號 🐾\n\n請以「手機號碼 姓名」格式傳送（例如：0912345678 王小明），需與您在本店登記的資料一致，即可連結您的帳號，之後將自動收到預約確認、美容完工等通知。"
         )
       }
       continue
@@ -70,9 +70,23 @@ async function processEvents(events: LineEvent[]) {
     if (event.type === "message" && event.message?.type === "text") {
       const text = event.message.text?.trim() ?? ""
 
-      // Phone number sent → link to customer account
+      // H1: account binding requires phone + name (a second factor), mirroring
+      // the AUTH-4 design of booking/lookup. A phone number alone must never
+      // bind an account or disclose balance/PII — anyone could guess a phone.
+      const linkMatch = text.match(/^(09\d{8})[\s,，、]+(.{1,100})$/)
+      if (linkMatch) {
+        await handlePhoneLinking(lineUserId, linkMatch[1], linkMatch[2].trim(), event.replyToken)
+        continue
+      }
+
+      // Bare phone → ask for the name too; do NOT link or disclose anything.
       if (/^09\d{8}$/.test(text)) {
-        await handlePhoneLinking(lineUserId, text, event.replyToken)
+        if (event.replyToken) {
+          await replyMessage(
+            event.replyToken,
+            "為保護您的個資，請以「手機號碼 姓名」格式傳送（例如：0912345678 王小明）才能完成帳號綁定。"
+          )
+        }
         continue
       }
 
@@ -86,36 +100,65 @@ async function processEvents(events: LineEvent[]) {
       if (event.replyToken) {
         await replyMessage(
           event.replyToken,
-          "您好！如需連結帳號，請傳送您登記的手機號碼（格式：09xxxxxxxx）。\n如需查詢會員資料，請傳送「查詢」。"
+          "您好！如需連結帳號，請以「手機號碼 姓名」格式傳送（例如：0912345678 王小明）。\n如需查詢會員資料，請傳送「查詢」。"
         )
       }
     }
   }
 }
 
-async function handlePhoneLinking(lineUserId: string, phone: string, replyToken?: string) {
+async function handlePhoneLinking(
+  lineUserId: string,
+  phone: string,
+  name: string,
+  replyToken?: string
+) {
   const customers = await prisma.customer.findMany({
     where: { phone, status: "ACTIVE" },
     include: { shop: { select: { name: true } } },
   })
 
-  if (customers.length === 0) {
+  // H1: second factor — the supplied name must match. Non-confirming response:
+  // "no such phone" and "wrong name" return the identical message so a caller
+  // cannot enumerate which phones are registered.
+  const verified = customers.filter(
+    (c) => c.name.trim().toLowerCase() === name.toLowerCase()
+  )
+  if (verified.length === 0) {
     if (replyToken) {
-      await replyMessage(replyToken, `找不到手機號碼 ${phone} 對應的客人資料，請確認號碼是否正確，或洽詢店家協助。`)
+      await replyMessage(
+        replyToken,
+        "查無相符的會員資料，請確認手機號碼與姓名是否與店家登記一致，或洽詢店家協助。"
+      )
+    }
+    return
+  }
+
+  // H1: anti-hijack — never overwrite a record already bound to a DIFFERENT
+  // LINE account. Only bind records that are unbound or already this user's.
+  const bindable = verified.filter((c) => !c.lineUserId || c.lineUserId === lineUserId)
+  const blockedCount = verified.length - bindable.length
+  if (bindable.length === 0) {
+    if (replyToken) {
+      await replyMessage(
+        replyToken,
+        "此會員資料已綁定其他 LINE 帳號。若需變更綁定，請洽詢店家協助。"
+      )
     }
     return
   }
 
   await prisma.customer.updateMany({
-    where: { phone, status: "ACTIVE" },
+    where: { id: { in: bindable.map((c) => c.id) } },
     data: { lineUserId },
   })
 
-  const shopNames = [...new Set(customers.map((c) => c.shop.name))].join("、")
+  const shopNames = [...new Set(bindable.map((c) => c.shop.name))].join("、")
   if (replyToken) {
     await replyMessage(
       replyToken,
-      `帳號連結成功！✅\n您的 LINE 已與「${shopNames}」的客戶資料完成綁定。\n之後預約確認、美容完工通知將自動傳送給您。`
+      `帳號綁定成功！✅\n您的 LINE 已與「${shopNames}」的客戶資料完成綁定。\n之後預約確認、美容完工通知將自動傳送給您。` +
+        (blockedCount > 0 ? "\n（部分資料已綁定其他帳號，未變更。）" : "")
     )
   }
 }

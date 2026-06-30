@@ -1,16 +1,18 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
 import { sendLineMessage, buildBaseUrl } from "@/lib/line"
 import { readJson, money, shortText, longText, z } from "@/lib/validation"
 import { round2 } from "@/lib/money"
+import { randomBytes } from "crypto"
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // C1: central guard (401 if no shopId / 403 if shop not ACTIVE).
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
-  const shopId = session.user.shopId
   const { searchParams } = new URL(req.url)
   const petId = searchParams.get("petId")
 
@@ -46,10 +48,11 @@ const createSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // C1: central guard (401 if no shopId / 403 if shop not ACTIVE).
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
-  const shopId = session.user.shopId
   const baseUrl = buildBaseUrl(req)
 
   const parsed = await readJson(req, createSchema)
@@ -84,6 +87,8 @@ export async function POST(req: NextRequest) {
           petId: body.petId,
           shopId,
           groomerId,
+          // L2: explicit unguessable public token (not the cuid schema default).
+          viewToken: randomBytes(24).toString("base64url"),
           services: JSON.stringify(body.services || []),
           products: body.products || null,
           totalCost,

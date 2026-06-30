@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
 import { sendLineMessage, buildBaseUrl } from "@/lib/line"
 
@@ -7,11 +7,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   const { id } = await params
-  const shopId = session.user.shopId
   const baseUrl = buildBaseUrl(req)
 
   try {

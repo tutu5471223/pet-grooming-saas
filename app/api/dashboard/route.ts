@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAuth } from "@/lib/auth-guard"
+import { round2 } from "@/lib/money"
 import { startOfMonth, endOfMonth, startOfDay, endOfDay, subMonths } from "date-fns"
 
 export async function GET() {
@@ -47,14 +48,22 @@ export async function GET() {
       orderBy: { checkIn: "asc" },
     }),
 
-    // 本月收入
+    // 本月收入（淨額口徑，M1）
+    // Net revenue = sum(amount) - sum(refundedAmount) over the *original* charges
+    // (status PAID or REFUNDED, amount >= 0). The negative reversal rows that the
+    // refund flow creates (PAID, amount = -amount) are excluded via amount >= 0,
+    // so a refund is counted exactly once (via refundedAmount), never twice.
+    //   sell 100, refund 100  -> 100 - 100 = 0
+    //   sell 100, refund 30   -> 100 - 30  = 70
+    //   no refund             -> 100 - 0   = 100
     prisma.payment.aggregate({
       where: {
         shopId,
-        status: "PAID",
+        status: { in: ["PAID", "REFUNDED"] },
+        amount: { gte: 0 },
         paidAt: { gte: monthStart, lte: monthEnd },
       },
-      _sum: { amount: true },
+      _sum: { amount: true, refundedAmount: true },
     }),
 
     // 總客人數
@@ -68,12 +77,18 @@ export async function GET() {
         const e = endOfMonth(d)
         return prisma.payment
           .aggregate({
-            where: { shopId, status: "PAID", paidAt: { gte: s, lte: e } },
-            _sum: { amount: true },
+            where: {
+              shopId,
+              status: { in: ["PAID", "REFUNDED"] },
+              amount: { gte: 0 },
+              paidAt: { gte: s, lte: e },
+            },
+            _sum: { amount: true, refundedAmount: true },
           })
           .then((r) => ({
             month: `${d.getMonth() + 1}月`,
-            revenue: r._sum.amount ?? 0,
+            // Net of refunds (M1)
+            revenue: round2((r._sum.amount ?? 0) - (r._sum.refundedAmount ?? 0)),
           }))
       })
     ),
@@ -89,7 +104,7 @@ export async function GET() {
   return NextResponse.json({
     todayAppointments,
     stayingPets,
-    monthRevenue: monthRevenue._sum.amount ?? 0,
+    monthRevenue: round2((monthRevenue._sum.amount ?? 0) - (monthRevenue._sum.refundedAmount ?? 0)),
     totalCustomers,
     monthlyRevenue,
     appointmentsByStatus,

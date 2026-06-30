@@ -5,6 +5,8 @@ export interface AuthContext {
   userId: string
   shopId: string
   role: string
+  isSuperAdmin: boolean
+  shopStatus: string
 }
 
 type GuardResult =
@@ -13,7 +15,13 @@ type GuardResult =
 
 /**
  * Verifies session exists and extracts auth context.
- * Returns 401 if unauthenticated.
+ *
+ * - 401 if unauthenticated (no `shopId` claim). A deactivated account's token is
+ *   stripped of `shopId` in auth.ts, so it lands here (C1).
+ * - 403 (H2) if the shop is not ACTIVE. Shop status (PENDING / SUSPENDED /
+ *   REJECTED / MERGED) is enforced HERE, on the API surface, not only via the
+ *   dashboard layout redirect — otherwise `curl + cookie` bypasses every
+ *   platform-level shop control. Superadmins bypass the status gate.
  */
 export async function requireAuth(): Promise<GuardResult> {
   const session = await auth()
@@ -23,12 +31,25 @@ export async function requireAuth(): Promise<GuardResult> {
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     }
   }
+  const isSuperAdmin = session.user.isSuperAdmin === true
+  const shopStatus = session.user.shopStatus ?? ""
+  if (!isSuperAdmin && shopStatus !== "ACTIVE") {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "店家尚未啟用或已停權", code: "SHOP_INACTIVE" },
+        { status: 403 }
+      ),
+    }
+  }
   return {
     ok: true,
     ctx: {
       userId: session.user.id,
       shopId: session.user.shopId,
       role: session.user.role,
+      isSuperAdmin,
+      shopStatus,
     },
   }
 }

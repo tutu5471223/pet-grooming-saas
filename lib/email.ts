@@ -25,6 +25,10 @@ function createTransport() {
     port,
     secure: port === 465,
     auth: { user, pass },
+    // M9: bound SMTP so a slow/hung mail server can't suspend the request.
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 8000,
   })
 }
 
@@ -41,12 +45,17 @@ export async function sendEmail({ to, subject, html }: EmailOptions): Promise<vo
     return
   }
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
-    to,
-    subject,
-    html,
-  })
-
-  console.log(`[Email] sent -> ${maskEmail(to)} | subject="${subject}"`)
+  // M9/M15: never throw — callers invoke this best-effort and must not turn a
+  // mail failure into a 500. Swallow + log on failure.
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+      to,
+      subject,
+      html,
+    })
+    console.log(`[Email] sent -> ${maskEmail(to)} | subject="${subject}"`)
+  } catch (err) {
+    console.error(`[Email] send failed -> ${maskEmail(to)} | subject="${subject}"`, err)
+  }
 }

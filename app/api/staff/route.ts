@@ -1,7 +1,6 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
-import { requireRole } from "@/lib/auth-guard"
+import { requireAuth, requireRole } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { checkStaffLimit } from "@/lib/subscription-guard"
@@ -9,12 +8,14 @@ import { writeAudit } from "@/lib/audit"
 import { readJson, shortText, email as emailSchema, z } from "@/lib/validation"
 
 export async function GET() {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // C1: central guard (401 if no shopId / 403 if shop not ACTIVE).
+  const guard = await requireAuth()
+  if (!guard.ok) return guard.response
+  const { shopId } = guard.ctx
 
   try {
     const staff = await prisma.user.findMany({
-      where: { shopId: session.user.shopId, isActive: true },
+      where: { shopId, isActive: true },
       select: { id: true, name: true, role: true },
       orderBy: { name: "asc" },
     })
