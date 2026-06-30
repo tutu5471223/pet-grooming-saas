@@ -5,6 +5,12 @@ import { requireAuth } from "@/lib/auth-guard"
 import { readJson, z, shortText } from "@/lib/validation"
 import { parseMoney } from "@/lib/money"
 
+const EXPIRY_POLICIES = ["FORFEIT", "GRACE_PERIOD", "PERMANENT"] as const
+
+function parseTaipeiDate(dateStr: string): Date {
+  return new Date(`${dateStr}T00:00:00+08:00`)
+}
+
 const updatePlanSchema = z.object({
   name: shortText.min(1).optional(),
   maxSessions: z.number().finite().optional(),
@@ -12,6 +18,8 @@ const updatePlanSchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   notes: shortText.nullish(),
+  expiryPolicy: z.enum(EXPIRY_POLICIES).optional(),
+  graceDays: z.number().int().min(1).max(365).optional(),
 })
 
 export async function PATCH(
@@ -83,9 +91,11 @@ export async function PATCH(
         name: body.name ?? plan.name,
         maxSessions: nextMaxSessions,
         pricePerSession: nextPrice !== null ? nextPrice : plan.pricePerSession,
-        startDate: body.startDate ? new Date(body.startDate) : plan.startDate,
-        endDate: body.endDate ? new Date(body.endDate) : plan.endDate,
+        startDate: body.startDate ? parseTaipeiDate(body.startDate) : plan.startDate,
+        endDate: body.endDate ? parseTaipeiDate(body.endDate) : plan.endDate,
         notes: body.notes !== undefined ? body.notes : plan.notes,
+        expiryPolicy: body.expiryPolicy ?? plan.expiryPolicy,
+        graceDays: body.graceDays ?? plan.graceDays,
       },
     })
 

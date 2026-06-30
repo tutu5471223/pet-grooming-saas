@@ -562,6 +562,8 @@ model PetMonthlyPlan {
   endDate         DateTime
   notes           String?
   usedSessions    Int      @default(0)
+  expiryPolicy    String   @default("FORFEIT")
+  graceDays       Int      @default(7)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

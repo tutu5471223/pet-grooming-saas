@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/utils"
-import { format } from "date-fns"
 
 interface PetMonthlyPlan {
   id: string
@@ -19,24 +18,50 @@ interface PetMonthlyPlan {
   startDate: string | Date
   endDate: string | Date
   notes: string | null
+  expiryPolicy: string
+  graceDays: number
 }
 
-function getPlanStatus(plan: PetMonthlyPlan) {
+type PlanStatus = "active" | "expired" | "upcoming" | "exhausted" | "grace"
+
+function getPlanStatus(plan: PetMonthlyPlan): PlanStatus {
   const now = new Date()
   const start = new Date(plan.startDate)
   const end = new Date(plan.endDate)
   if (now < start) return "upcoming"
-  if (now > end) return "expired"
   if (plan.usedSessions >= plan.maxSessions) return "exhausted"
-  return "active"
+  if (now <= end) return "active"
+  if (plan.expiryPolicy === "PERMANENT") return "active"
+  if (plan.expiryPolicy === "GRACE_PERIOD") {
+    const graceEnd = new Date(end)
+    graceEnd.setDate(graceEnd.getDate() + (plan.graceDays ?? 7))
+    if (now <= graceEnd) return "grace"
+  }
+  return "expired"
 }
 
-const STATUS_CONFIG = {
+const STATUS_CONFIG: Record<PlanStatus, { label: string; bg: string; text: string; border: string }> = {
   active: { label: "有效", bg: "bg-green-50", text: "text-green-700", border: "border-green-200" },
   expired: { label: "已到期", bg: "bg-gray-50", text: "text-gray-500", border: "border-gray-200" },
   upcoming: { label: "未開始", bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
   exhausted: { label: "次數用完", bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200" },
+  grace: { label: "寬限期", bg: "bg-yellow-50", text: "text-yellow-700", border: "border-yellow-200" },
 }
+
+function formatTaipeiDate(d: string | Date): string {
+  return new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(d)).replace(/\//g, "/")
+}
+
+const EXPIRY_POLICY_OPTIONS = [
+  { value: "FORFEIT", label: "到期後剩餘次數作廢" },
+  { value: "GRACE_PERIOD", label: "到期後寬限幾天" },
+  { value: "PERMANENT", label: "剩餘次數永久有效" },
+]
 
 export function PetMonthlyPlanManager({
   petId,
@@ -56,6 +81,8 @@ export function PetMonthlyPlanManager({
     startDate: "",
     endDate: "",
     notes: "",
+    expiryPolicy: "FORFEIT",
+    graceDays: "7",
   })
   const [defaultPetPrice, setDefaultPetPrice] = useState<number | null>(null)
 
@@ -69,7 +96,7 @@ export function PetMonthlyPlanManager({
   }, [petId])
 
   function f(field: keyof typeof form) {
-    return (e: React.ChangeEvent<HTMLInputElement>) =>
+    return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((prev) => ({ ...prev, [field]: e.target.value }))
   }
 
@@ -84,20 +111,34 @@ export function PetMonthlyPlanManager({
       setError("次數至少 1 次，每次價格不得為負數")
       return
     }
+    const graceDays = Number(form.graceDays)
+    if (form.expiryPolicy === "GRACE_PERIOD" && (isNaN(graceDays) || graceDays < 1)) {
+      setError("寬限天數至少 1 天")
+      return
+    }
     setSaving(true)
     setError("")
     try {
       const res = await fetch(`/api/pets/${petId}/monthly-plans`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: form.name, maxSessions, pricePerSession, startDate: form.startDate, endDate: form.endDate, notes: form.notes || null }),
+        body: JSON.stringify({
+          name: form.name,
+          maxSessions,
+          pricePerSession,
+          startDate: form.startDate,
+          endDate: form.endDate,
+          notes: form.notes || null,
+          expiryPolicy: form.expiryPolicy,
+          graceDays: form.expiryPolicy === "GRACE_PERIOD" ? graceDays : 7,
+        }),
       })
       if (!res.ok) {
         const d = await res.json()
         throw new Error(d.error || "新增失敗")
       }
       setShowForm(false)
-      setForm({ name: "", maxSessions: "", pricePerSession: "", startDate: "", endDate: "", notes: "" })
+      setForm({ name: "", maxSessions: "", pricePerSession: "", startDate: "", endDate: "", notes: "", expiryPolicy: "FORFEIT", graceDays: "7" })
       router.refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : "新增失敗")
@@ -158,6 +199,31 @@ export function PetMonthlyPlanManager({
                 <Input type="date" value={form.endDate} onChange={f("endDate")} />
               </div>
               <div className="col-span-2 space-y-1">
+                <Label>過期政策</Label>
+                <select
+                  value={form.expiryPolicy}
+                  onChange={f("expiryPolicy")}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {EXPIRY_POLICY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              {form.expiryPolicy === "GRACE_PERIOD" && (
+                <div className="col-span-2 space-y-1">
+                  <Label>寬限天數</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="365"
+                    placeholder="7"
+                    value={form.graceDays}
+                    onChange={f("graceDays")}
+                  />
+                </div>
+              )}
+              <div className="col-span-2 space-y-1">
                 <Label>備註</Label>
                 <Input placeholder="（選填）" value={form.notes} onChange={f("notes")} />
               </div>
@@ -185,6 +251,7 @@ export function PetMonthlyPlanManager({
             const status = getPlanStatus(plan)
             const cfg = STATUS_CONFIG[status]
             const remaining = plan.maxSessions - plan.usedSessions
+            const policyLabel = EXPIRY_POLICY_OPTIONS.find(o => o.value === plan.expiryPolicy)?.label ?? ""
             return (
               <Card key={plan.id} className={`border ${cfg.border}`}>
                 <CardContent className="p-4">
@@ -197,15 +264,18 @@ export function PetMonthlyPlanManager({
                         <p className="font-medium text-gray-900">{plan.name}</p>
                       </div>
                       <p className="text-sm text-gray-500 mt-1">
-                        {format(new Date(plan.startDate), "yyyy/MM/dd")} ～{" "}
-                        {format(new Date(plan.endDate), "yyyy/MM/dd")}
+                        {formatTaipeiDate(plan.startDate)} ～ {formatTaipeiDate(plan.endDate)}
                       </p>
                       <p className="text-sm text-gray-700 mt-1">
                         {formatCurrency(plan.pricePerSession)}/次 ・ 已用{" "}
                         <span className="font-medium">{plan.usedSessions}/{plan.maxSessions}</span> 次
-                        {status === "active" && (
+                        {(status === "active" || status === "grace") && (
                           <span className="ml-1 text-green-700 font-medium">（剩 {remaining} 次）</span>
                         )}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {policyLabel}
+                        {plan.expiryPolicy === "GRACE_PERIOD" && `（${plan.graceDays} 天）`}
                       </p>
                       {plan.notes && <p className="text-xs text-gray-400 mt-0.5">{plan.notes}</p>}
                     </div>

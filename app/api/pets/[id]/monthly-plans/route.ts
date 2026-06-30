@@ -5,6 +5,8 @@ import { requireAuth } from "@/lib/auth-guard"
 import { readJson, z, shortText } from "@/lib/validation"
 import { parseMoney, round2 } from "@/lib/money"
 
+const EXPIRY_POLICIES = ["FORFEIT", "GRACE_PERIOD", "PERMANENT"] as const
+
 const createPlanSchema = z.object({
   name: shortText.min(1),
   maxSessions: z.number().finite(),
@@ -12,7 +14,13 @@ const createPlanSchema = z.object({
   startDate: z.string().min(1),
   endDate: z.string().min(1),
   notes: shortText.nullish(),
+  expiryPolicy: z.enum(EXPIRY_POLICIES).optional(),
+  graceDays: z.number().int().min(1).max(365).optional(),
 })
+
+function parseTaipeiDate(dateStr: string): Date {
+  return new Date(`${dateStr}T00:00:00+08:00`)
+}
 
 export async function GET(
   req: NextRequest,
@@ -30,16 +38,23 @@ export async function GET(
 
     const now = new Date()
     const plans = await prisma.petMonthlyPlan.findMany({
-      where: {
-        petId,
-        shopId,
-        ...(activeOnly ? { startDate: { lte: now }, endDate: { gte: now } } : {}),
-      },
+      where: { petId, shopId },
       orderBy: { startDate: "desc" },
     })
 
     if (activeOnly) {
-      const activePlan = plans.find((p) => p.usedSessions < p.maxSessions) ?? null
+      const activePlan = plans.find((p) => {
+        if (p.usedSessions >= p.maxSessions) return false
+        if (now < p.startDate) return false
+        if (now <= p.endDate) return true
+        if (p.expiryPolicy === "PERMANENT") return true
+        if (p.expiryPolicy === "GRACE_PERIOD") {
+          const graceEnd = new Date(p.endDate)
+          graceEnd.setDate(graceEnd.getDate() + (p.graceDays ?? 7))
+          return now <= graceEnd
+        }
+        return false
+      }) ?? null
       return NextResponse.json(activePlan)
     }
 
@@ -72,8 +87,8 @@ export async function POST(
     if (pricePerSession === null || maxSessions < 1) {
       return NextResponse.json({ error: "缺少必填欄位或資料無效" }, { status: 400 })
     }
-    const startDate = new Date(body.startDate)
-    const endDate = new Date(body.endDate)
+    const startDate = parseTaipeiDate(body.startDate)
+    const endDate = parseTaipeiDate(body.endDate)
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return NextResponse.json({ error: "缺少必填欄位或資料無效" }, { status: 400 })
     }
@@ -89,6 +104,8 @@ export async function POST(
           startDate,
           endDate,
           notes: body.notes || null,
+          expiryPolicy: body.expiryPolicy ?? "FORFEIT",
+          graceDays: body.graceDays ?? 7,
         },
       })
 
