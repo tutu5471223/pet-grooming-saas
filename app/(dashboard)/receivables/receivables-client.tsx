@@ -51,10 +51,11 @@ interface Props {
   items: ARPayment[]
   status: "PENDING" | "PAID" | "VOIDED"
   role: string
+  isSuperAdmin: boolean
 }
 
-export function ReceivablesClient({ items, status, role }: Props) {
-  const isOwner = role === "OWNER"
+export function ReceivablesClient({ items, status, role, isSuperAdmin }: Props) {
+  const isOwner = role === "OWNER" || isSuperAdmin === true
   const router = useRouter()
   const [showCreate, setShowCreate] = useState(false)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
