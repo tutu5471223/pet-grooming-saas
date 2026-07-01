@@ -88,7 +88,7 @@ export default async function ReceivablesPage({
       <ReceivablesClient
         items={items}
         status={status}
-        isOwner={session.user.role === "OWNER"}
+        role={session.user.role ?? ""}
       />
     </div>
   )

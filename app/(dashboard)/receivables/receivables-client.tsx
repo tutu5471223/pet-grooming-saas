@@ -50,10 +50,11 @@ function AgingBadge({ createdAt }: { createdAt: string }) {
 interface Props {
   items: ARPayment[]
   status: "PENDING" | "PAID" | "VOIDED"
-  isOwner: boolean
+  role: string
 }
 
-export function ReceivablesClient({ items, status, isOwner }: Props) {
+export function ReceivablesClient({ items, status, role }: Props) {
+  const isOwner = role === "OWNER"
   const router = useRouter()
   const [showCreate, setShowCreate] = useState(false)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
@@ -238,23 +239,23 @@ export function ReceivablesClient({ items, status, isOwner }: Props) {
                                 <CheckCircle2 className="h-4 w-4" />
                               </Button>
                             )}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
-                              onClick={() => setVoidTarget(item)}
-                              disabled={!isOwner}
-                              title="作廢"
-                            >
-                              <Ban className="h-4 w-4" />
-                            </Button>
-                            {status === "PENDING" && (
+                            {isOwner && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
+                                onClick={() => setVoidTarget(item)}
+                                title="作廢"
+                              >
+                                <Ban className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {status === "PENDING" && isOwner && (
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 className="h-7 text-red-500 hover:text-red-600 hover:bg-red-50"
                                 onClick={() => deleteAR(item.id)}
-                                disabled={!isOwner}
                                 title="刪除"
                               >
                                 <Trash2 className="h-4 w-4" />
