@@ -36,6 +36,7 @@ import { ExpenseCategoryChart } from "@/components/dashboard/expense-category-ch
 import { ProfitTrendChart } from "@/components/dashboard/profit-trend-chart"
 import { MonthNavigator } from "./month-navigator"
 import { CollectButton } from "./collect-button"
+import { VoidButton } from "./void-button"
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: "現金",
@@ -325,6 +326,7 @@ export default async function ReportsPage({
   if (!session) redirect("/login")
 
   const shopId = session.user.shopId
+  const isOwner = session.user.role === "OWNER" || session.user.isSuperAdmin === true
   const { month: monthParam, tab: tabParam, from: fromParam, to: toParam } = await searchParams
 
   let monthDate: Date
@@ -806,17 +808,23 @@ export default async function ReportsPage({
                       {receivablesData.pendingPayments.map((p) => {
                         const rec = p.groomingRecord
                         const services = rec ? (() => { try { return (JSON.parse(rec.services) as { name: string }[]).map(s => s.name).join("、") } catch { return "" } })() : ""
+                        const customerName = rec?.pet?.customer?.name ?? p.customer?.name ?? "—"
                         return (
                           <tr key={p.id} className="hover:bg-gray-50/50">
                             <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                               {rec ? format(new Date(rec.date), "MM/dd") : "—"}
                             </td>
-                            <td className="px-4 py-3 text-gray-900">{rec?.pet?.customer?.name ?? p.customer?.name ?? "—"}</td>
+                            <td className="px-4 py-3 text-gray-900">{customerName}</td>
                             <td className="px-4 py-3 text-gray-700">{rec?.pet?.name ?? "—"}</td>
                             <td className="px-4 py-3 text-gray-600 max-w-[160px] truncate">{services || "美容"}</td>
                             <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(p.amount)}</td>
                             <td className="px-4 py-3">
-                              <CollectButton paymentId={p.id} amount={p.amount} />
+                              <div className="flex items-center gap-2">
+                                <CollectButton paymentId={p.id} amount={p.amount} />
+                                {isOwner && (
+                                  <VoidButton paymentId={p.id} amount={p.amount} customerName={customerName} />
+                                )}
+                              </div>
                             </td>
                           </tr>
                         )

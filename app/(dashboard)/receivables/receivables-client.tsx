@@ -177,7 +177,6 @@ export function ReceivablesClient({ items, status, role, isSuperAdmin }: Props) 
           </div>
         </CardHeader>
         <CardContent>
-          <p className="text-xs text-blue-500 mb-2">【DEBUG】role={role} isSuperAdmin={String(isSuperAdmin)} isOwner={String(isOwner)} items={items.length} status={status}</p>
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-400">
               <Receipt className="h-10 w-10 mb-2" />
