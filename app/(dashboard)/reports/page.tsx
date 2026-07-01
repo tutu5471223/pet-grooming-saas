@@ -24,6 +24,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   AlertCircle,
+  Ban,
 } from "lucide-react"
 import Link from "next/link"
 import { formatCurrency } from "@/lib/utils"
@@ -316,6 +317,48 @@ async function getReceivablesData(shopId: string) {
   return { pendingPayments, total }
 }
 
+// ─── Voided (Tab 4) data ──────────────────────────────────────────────────────
+async function getVoidedData(shopId: string) {
+  const payments = await prisma.payment.findMany({
+    where: { shopId, status: "VOIDED" },
+    include: {
+      groomingRecord: {
+        select: {
+          date: true,
+          services: true,
+          pet: { select: { name: true, customer: { select: { name: true } } } },
+        },
+      },
+      boardingRecord: {
+        select: { pet: { select: { name: true, customer: { select: { name: true } } } } },
+      },
+      customer: { select: { name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  })
+
+  const paymentIds = payments.map((p) => p.id)
+  const auditLogs = await prisma.auditLog.findMany({
+    where: { shopId, action: "VOID_RECEIVABLE", resourceId: { in: paymentIds } },
+    select: { resourceId: true, createdAt: true },
+  })
+  const voidTimeMap = new Map(auditLogs.map((a) => [a.resourceId, a.createdAt]))
+
+  return payments.map((p) => ({
+    id: p.id,
+    createdAt: p.createdAt.toISOString(),
+    amount: p.amount,
+    billingType: p.billingType,
+    notes: p.notes,
+    customer: p.customer,
+    groomingRecord: p.groomingRecord
+      ? { date: p.groomingRecord.date.toISOString(), services: p.groomingRecord.services, pet: p.groomingRecord.pet }
+      : null,
+    boardingRecord: p.boardingRecord ? { pet: p.boardingRecord.pet } : null,
+    voidedAt: voidTimeMap.get(p.id)?.toISOString() ?? null,
+  }))
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default async function ReportsPage({
   searchParams,
@@ -347,12 +390,14 @@ export default async function ReportsPage({
   const overviewData = tab === "overview" ? await getOverviewData(shopId, monthDate) : null
   const incomeData = tab === "income" ? await getIncomeData(shopId, fromDate, toDate) : null
   const expenseData = tab === "expense" ? await getExpenseData(shopId, fromDate, toDate) : null
+  const voidedData = tab === "voided" ? await getVoidedData(shopId) : null
   const receivablesData = tab === "receivables" ? await getReceivablesData(shopId) : null
 
   const TABS = [
     { id: "overview", label: "營收總覽" },
     { id: "income", label: "收入明細" },
     { id: "expense", label: "支出明細" },
+    { id: "voided", label: "已作廢明細" },
     { id: "receivables", label: "應收帳款" },
   ]
 
@@ -363,11 +408,11 @@ export default async function ReportsPage({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">營收報表</h1>
-            {tab !== "receivables" && (
+            {tab !== "receivables" && tab !== "voided" && (
               <p className="text-sm text-gray-500 mt-1">{monthLabel(monthDate)}</p>
             )}
           </div>
-          {tab !== "receivables" && <MonthNavigator month={month} tab={tab} />}
+          {tab !== "receivables" && tab !== "voided" && <MonthNavigator month={month} tab={tab} />}
         </div>
 
         {/* Tab navigation */}
@@ -757,7 +802,80 @@ export default async function ReportsPage({
         </div>
       )}
 
-      {/* ── Tab 4: Receivables ───────────────────────────────────────────────── */}
+      {/* ── Tab 4: Voided ───────────────────────────────────────────────────── */}
+      {tab === "voided" && voidedData && (
+        <div className="space-y-4">
+          {voidedData.length === 0 ? (
+            <Card>
+              <CardContent className="py-16 text-center text-gray-400">
+                <Ban className="h-10 w-10 mx-auto mb-2" />
+                <p>目前無作廢紀錄</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-gray-100 bg-gray-50/50">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-medium text-gray-500">建立日期</th>
+                        <th className="px-4 py-3 text-left font-medium text-gray-500">類型</th>
+                        <th className="px-4 py-3 text-left font-medium text-gray-500">項目/寵物</th>
+                        <th className="px-4 py-3 text-left font-medium text-gray-500">客人</th>
+                        <th className="px-4 py-3 text-left font-medium text-gray-500">作廢原因</th>
+                        <th className="px-4 py-3 text-left font-medium text-gray-500">作廢時間</th>
+                        <th className="px-4 py-3 text-right font-medium text-gray-500">原金額</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {voidedData.map((p) => {
+                        const rec = p.groomingRecord
+                        const petName = rec?.pet?.name ?? "—"
+                        const customerName = rec?.pet?.customer?.name ?? p.boardingRecord?.pet?.customer?.name ?? p.customer?.name ?? "—"
+                        let type = "其他"
+                        if (rec) type = "美容"
+                        else if (p.boardingRecord) type = "住宿"
+                        else if (p.billingType === "CREDIT") type = "儲值"
+                        else if (p.billingType === "MONTHLY_PLAN") type = "包月"
+                        return (
+                          <tr key={p.id} className="hover:bg-gray-50/50 opacity-75">
+                            <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                              {format(new Date(p.createdAt), "MM/dd")}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{type}</span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-700 max-w-[140px] truncate">{petName}</td>
+                            <td className="px-4 py-3 text-gray-700">{customerName}</td>
+                            <td className="px-4 py-3 text-gray-500 text-xs max-w-[180px] truncate">{p.notes ?? "—"}</td>
+                            <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                              {p.voidedAt ? format(new Date(p.voidedAt), "MM/dd HH:mm") : "—"}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-gray-400 line-through">
+                              {formatCurrency(p.amount)}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot className="border-t border-gray-200 bg-gray-50">
+                      <tr>
+                        <td colSpan={6} className="px-4 py-3 text-sm font-semibold text-gray-700">共 {voidedData.length} 筆作廢紀錄</td>
+                        <td className="px-4 py-3 text-right text-base font-bold text-gray-400 line-through">
+                          {formatCurrency(voidedData.reduce((s, p) => s + p.amount, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* ── Tab 5: Receivables ───────────────────────────────────────────────── */}
       {tab === "receivables" && receivablesData && (
         <div className="space-y-4">
           {/* Summary card */}
