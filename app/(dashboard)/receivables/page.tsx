@@ -51,6 +51,7 @@ export default async function ReceivablesPage({
       <div>
         <h1 className="text-2xl font-bold text-gray-900">應收帳款</h1>
         <p className="text-sm text-gray-500 mt-1">管理月結及待收款項目</p>
+        <p className="text-xs text-blue-500 mt-1">【DEBUG】目前角色：{session.user.role ?? "(undefined)"} / isSuperAdmin：{String(session.user.isSuperAdmin)}</p>
       </div>
 
       {status === "PENDING" && items.length > 0 && (
