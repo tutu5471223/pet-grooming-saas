@@ -38,6 +38,7 @@ import { ProfitTrendChart } from "@/components/dashboard/profit-trend-chart"
 import { MonthNavigator } from "./month-navigator"
 import { CollectButton } from "./collect-button"
 import { VoidButton } from "./void-button"
+import { RefundButton } from "./refund-button"
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: "現金",
@@ -221,7 +222,12 @@ async function getOverviewData(shopId: string, monthDate: Date) {
 async function getIncomeData(shopId: string, fromDate: Date, toDate: Date) {
   const [payments, sales] = await Promise.all([
     prisma.payment.findMany({
-      where: { shopId, status: "PAID", paidAt: { gte: fromDate, lte: toDate } },
+      where: {
+        shopId,
+        status: { in: ["PAID", "REFUNDED"] },
+        paidAt: { gte: fromDate, lte: toDate },
+        amount: { gte: 0 }, // exclude negative reversal rows created by the refund flow
+      },
       include: {
         groomingRecord: {
           select: {
@@ -253,6 +259,9 @@ async function getIncomeData(shopId: string, fromDate: Date, toDate: Date) {
     petOrItem: string
     customer: string
     amount: number
+    refundedAmount: number
+    status: string
+    isPayment: boolean
     billingType: string
     paymentMethod: string
   }
@@ -272,17 +281,21 @@ async function getIncomeData(shopId: string, fromDate: Date, toDate: Date) {
       petOrItem: petName,
       customer: customerName,
       amount: p.amount,
+      refundedAmount: p.refundedAmount ?? 0,
+      status: p.status,
+      isPayment: true,
       billingType: BILLING_TYPE_LABELS[p.billingType] ?? p.billingType,
       paymentMethod: PAYMENT_METHOD_LABELS[p.paymentMethod ?? ""] ?? p.paymentMethod ?? "—",
     })
   }
   for (const s of sales) {
     const items = s.items.map((i) => i.product.name).join("、") || "商品"
-    rows.push({ id: s.id, date: new Date(s.createdAt), type: "商品銷售", petOrItem: items, customer: s.customer?.name ?? "—", amount: s.total, billingType: "—", paymentMethod: "—" })
+    rows.push({ id: s.id, date: new Date(s.createdAt), type: "商品銷售", petOrItem: items, customer: s.customer?.name ?? "—", amount: s.total, refundedAmount: 0, status: "PAID", isPayment: false, billingType: "—", paymentMethod: "—" })
   }
 
   rows.sort((a, b) => b.date.getTime() - a.date.getTime())
-  const total = rows.reduce((s, r) => s + r.amount, 0)
+  // M1: net total = original amounts minus any refunds applied
+  const total = rows.reduce((s, r) => s + r.amount - r.refundedAmount, 0)
   return { rows, total }
 }
 
@@ -720,27 +733,54 @@ export default async function ReportsPage({
                         <th className="px-4 py-3 text-left font-medium text-gray-500">計費方式</th>
                         <th className="px-4 py-3 text-left font-medium text-gray-500">付款方式</th>
                         <th className="px-4 py-3 text-right font-medium text-gray-500">金額</th>
+                        {isOwner && <th className="px-4 py-3" />}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {incomeData.rows.map((row) => (
-                        <tr key={row.id} className="hover:bg-gray-50/50">
-                          <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{format(row.date, "MM/dd")}</td>
-                          <td className="px-4 py-3">
-                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">{row.type}</span>
-                          </td>
-                          <td className="px-4 py-3 text-gray-900 max-w-[160px] truncate">{row.petOrItem}</td>
-                          <td className="px-4 py-3 text-gray-700">{row.customer}</td>
-                          <td className="px-4 py-3 text-gray-500 text-xs">{row.billingType}</td>
-                          <td className="px-4 py-3 text-gray-500 text-xs">{row.paymentMethod}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(row.amount)}</td>
-                        </tr>
-                      ))}
+                      {incomeData.rows.map((row) => {
+                        const fullyRefunded = row.status === "REFUNDED"
+                        const partiallyRefunded = row.refundedAmount > 0 && !fullyRefunded
+                        return (
+                          <tr key={row.id} className={`hover:bg-gray-50/50 ${fullyRefunded ? "opacity-60" : ""}`}>
+                            <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{format(row.date, "MM/dd")}</td>
+                            <td className="px-4 py-3">
+                              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">{row.type}</span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-900 max-w-[160px] truncate">{row.petOrItem}</td>
+                            <td className="px-4 py-3 text-gray-700">{row.customer}</td>
+                            <td className="px-4 py-3 text-gray-500 text-xs">{row.billingType}</td>
+                            <td className="px-4 py-3 text-gray-500 text-xs">{row.paymentMethod}</td>
+                            <td className="px-4 py-3 text-right">
+                              <p className={`font-semibold ${fullyRefunded ? "text-gray-400 line-through" : "text-gray-900"}`}>
+                                {formatCurrency(row.amount)}
+                              </p>
+                              {fullyRefunded && (
+                                <p className="text-xs text-red-500 mt-0.5">已全額退款</p>
+                              )}
+                              {partiallyRefunded && (
+                                <p className="text-xs text-orange-500 mt-0.5">已退 {formatCurrency(row.refundedAmount)}</p>
+                              )}
+                            </td>
+                            {isOwner && (
+                              <td className="px-4 py-3">
+                                {row.isPayment && !fullyRefunded && (
+                                  <RefundButton
+                                    paymentId={row.id}
+                                    originalAmount={row.amount}
+                                    refundedAmount={row.refundedAmount}
+                                  />
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        )
+                      })}
                     </tbody>
                     <tfoot className="border-t border-gray-200 bg-gray-50">
                       <tr>
-                        <td colSpan={6} className="px-4 py-3 text-sm font-semibold text-gray-700">合計（{incomeData.rows.length} 筆）</td>
+                        <td colSpan={6} className="px-4 py-3 text-sm font-semibold text-gray-700">淨收入合計（{incomeData.rows.length} 筆）</td>
                         <td className="px-4 py-3 text-right text-base font-bold text-indigo-700">{formatCurrency(incomeData.total)}</td>
+                        {isOwner && <td />}
                       </tr>
                     </tfoot>
                   </table>
