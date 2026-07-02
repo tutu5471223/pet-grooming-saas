@@ -108,6 +108,42 @@ function parsePetFromText(raw: string) {
   return { name, species, breed }
 }
 
+// Compress image using canvas before upload to avoid 413 errors.
+// Scales down to max 1600px and steps quality until base64 string < 900 KB.
+function compressImage(dataUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onerror = () => reject(new Error("圖片載入失敗"))
+    img.onload = () => {
+      const canvas = document.createElement("canvas")
+      const MAX_DIM = 1600
+      let { width, height } = img
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const ratio = Math.min(MAX_DIM / width, MAX_DIM / height)
+        width = Math.round(width * ratio)
+        height = Math.round(height * ratio)
+      }
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext("2d")
+      if (!ctx) { resolve(dataUrl); return }
+      ctx.drawImage(img, 0, 0, width, height)
+      // Step down quality until base64 string length < 900 KB (body stays under 1 MB)
+      const TARGET = 900 * 1024
+      for (const q of [0.85, 0.75, 0.65, 0.5, 0.4]) {
+        const result = canvas.toDataURL("image/jpeg", q)
+        if (result.length <= TARGET) { resolve(result); return }
+      }
+      // Last resort: halve dimensions
+      canvas.width = Math.round(width / 2)
+      canvas.height = Math.round(height / 2)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL("image/jpeg", 0.6))
+    }
+    img.src = dataUrl
+  })
+}
+
 const EMPTY_PET = {
   name: "", species: "犬", breed: "", gender: "UNKNOWN", birthday: "",
   personality: [] as string[],
@@ -157,43 +193,24 @@ export default function NewCustomerPage() {
   }
 
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    // [DEBUG] 階段1：檔案選取
     const file = e.target.files?.[0]
-    if (!file) {
-      alert("[DEBUG] 階段1：沒有選到檔案（file 為空）")
-      return
+    if (!file) return
+    setScanError(""); setScanDone(false); setScanProgress(0); setScanStatus("壓縮圖片中...")
+    const reader = new FileReader()
+    reader.onerror = () => setScanError("讀取圖片失敗")
+    reader.onload = (ev) => {
+      const raw = ev.target?.result as string
+      compressImage(raw)
+        .then((compressed) => { setScanPreview(compressed); setScanStatus("") })
+        .catch(() => setScanError("圖片壓縮失敗，請重試"))
     }
-    alert(`[DEBUG] 階段1：選到檔案\n名稱：${file.name}\n類型：${file.type}\n大小：${(file.size / 1024).toFixed(1)} KB`)
-    setScanError(""); setScanDone(false); setScanProgress(0); setScanStatus("")
-    try {
-      const reader = new FileReader()
-      reader.onerror = (ev) => {
-        const msg = `[DEBUG] 階段1 FileReader 錯誤：${String(ev.target?.error)}`
-        console.error(msg)
-        alert(msg)
-        setScanError("讀取圖片失敗")
-      }
-      reader.onload = (ev) => {
-        const result = ev.target?.result as string
-        // [DEBUG] 階段2：圖片讀取完成
-        alert(`[DEBUG] 階段2：FileReader 讀取完成\n資料前綴：${result?.slice(0, 60)}\n總長度：${result?.length ?? 0}`)
-        setScanPreview(result)
-      }
-      reader.readAsDataURL(file)
-    } catch (err: unknown) {
-      const msg = `[DEBUG] 階段1 例外：${err instanceof Error ? err.message : String(err)}`
-      console.error(msg, err)
-      alert(msg)
-      setScanError("讀取圖片時發生錯誤")
-    }
+    reader.readAsDataURL(file)
   }
 
   async function handleScan() {
     if (!scanPreview) return
     setScanLoading(true); setScanError(""); setScanProgress(20); setScanStatus("上傳圖片中...")
     try {
-      // [DEBUG] 階段3：準備發送 API
-      alert(`[DEBUG] 階段3：準備呼叫 /api/ocr\n圖片資料長度：${scanPreview.length}`)
       setScanProgress(40); setScanStatus("辨識中...")
       let res: Response
       try {
@@ -203,35 +220,25 @@ export default function NewCustomerPage() {
           body: JSON.stringify({ image: scanPreview }),
         })
       } catch (fetchErr: unknown) {
-        const msg = `[DEBUG] 階段3 fetch 網路錯誤：${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`
-        console.error(msg, fetchErr)
-        alert(msg)
-        throw new Error("網路連線失敗，請確認網路後重試")
+        throw new Error(fetchErr instanceof Error ? `網路錯誤：${fetchErr.message}` : "網路連線失敗，請確認網路後重試")
       }
-      // [DEBUG] 階段4：收到 API 回應
-      alert(`[DEBUG] 階段4：API 回應\nHTTP 狀態：${res.status} ${res.statusText}`)
       setScanProgress(80); setScanStatus("解析資料...")
       if (!res.ok) {
         let errMsg = "辨識失敗"
         try {
           const data = await res.json() as { error?: string }
           errMsg = data.error ?? errMsg
-        } catch { /* ignore parse error */ }
-        alert(`[DEBUG] 階段4 API 錯誤：${res.status} → ${errMsg}`)
+        } catch { /* ignore */ }
         throw new Error(errMsg)
       }
       const { text } = await res.json() as { text: string }
-      // [DEBUG] 階段5：成功
-      alert(`[DEBUG] 階段5：辨識成功\nOCR 文字前100字：${text?.slice(0, 100)}`)
       const parsed = parseCustomerText(text)
       setForm({ name: parsed.name, phone: parsed.phone, lineId: parsed.lineId, idNumber: "", address: parsed.address, notes: "" })
       const pet = parsePetFromText(text)
       if (pet) setPetForm((f) => ({ ...f, name: pet.name, species: pet.species, breed: pet.breed }))
       setScanProgress(100); setScanDone(true)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "辨識失敗，請重試"
-      console.error("[DEBUG] handleScan 最終捕捉到錯誤：", err)
-      setScanError(msg)
+      setScanError(err instanceof Error ? err.message : "辨識失敗，請重試")
     } finally {
       setScanLoading(false)
     }

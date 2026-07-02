@@ -90,6 +90,40 @@ function IssueRow({
   )
 }
 
+// Compress image using canvas before upload to avoid 413 errors.
+// Scales down to max 1600px and steps quality until base64 string < 900 KB.
+function compressImage(dataUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onerror = () => reject(new Error("圖片載入失敗"))
+    img.onload = () => {
+      const canvas = document.createElement("canvas")
+      const MAX_DIM = 1600
+      let { width, height } = img
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const ratio = Math.min(MAX_DIM / width, MAX_DIM / height)
+        width = Math.round(width * ratio)
+        height = Math.round(height * ratio)
+      }
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext("2d")
+      if (!ctx) { resolve(dataUrl); return }
+      ctx.drawImage(img, 0, 0, width, height)
+      const TARGET = 900 * 1024
+      for (const q of [0.85, 0.75, 0.65, 0.5, 0.4]) {
+        const result = canvas.toDataURL("image/jpeg", q)
+        if (result.length <= TARGET) { resolve(result); return }
+      }
+      canvas.width = Math.round(width / 2)
+      canvas.height = Math.round(height / 2)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL("image/jpeg", 0.6))
+    }
+    img.src = dataUrl
+  })
+}
+
 export default function NewPetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: customerId } = use(params)
   const router = useRouter()
@@ -121,9 +155,15 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    setScanError(""); setScanDone(false); setScanProgress(0); setScanStatus("")
+    setScanError(""); setScanDone(false); setScanProgress(0); setScanStatus("壓縮圖片中...")
     const reader = new FileReader()
-    reader.onload = (ev) => setScanPreview(ev.target?.result as string)
+    reader.onerror = () => setScanError("讀取圖片失敗")
+    reader.onload = (ev) => {
+      const raw = ev.target?.result as string
+      compressImage(raw)
+        .then((compressed) => { setScanPreview(compressed); setScanStatus("") })
+        .catch(() => setScanError("圖片壓縮失敗，請重試"))
+    }
     reader.readAsDataURL(file)
   }
 
