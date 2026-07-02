@@ -157,37 +157,81 @@ export default function NewCustomerPage() {
   }
 
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    // [DEBUG] 階段1：檔案選取
     const file = e.target.files?.[0]
-    if (!file) return
+    if (!file) {
+      alert("[DEBUG] 階段1：沒有選到檔案（file 為空）")
+      return
+    }
+    alert(`[DEBUG] 階段1：選到檔案\n名稱：${file.name}\n類型：${file.type}\n大小：${(file.size / 1024).toFixed(1)} KB`)
     setScanError(""); setScanDone(false); setScanProgress(0); setScanStatus("")
-    const reader = new FileReader()
-    reader.onload = (ev) => setScanPreview(ev.target?.result as string)
-    reader.readAsDataURL(file)
+    try {
+      const reader = new FileReader()
+      reader.onerror = (ev) => {
+        const msg = `[DEBUG] 階段1 FileReader 錯誤：${String(ev.target?.error)}`
+        console.error(msg)
+        alert(msg)
+        setScanError("讀取圖片失敗")
+      }
+      reader.onload = (ev) => {
+        const result = ev.target?.result as string
+        // [DEBUG] 階段2：圖片讀取完成
+        alert(`[DEBUG] 階段2：FileReader 讀取完成\n資料前綴：${result?.slice(0, 60)}\n總長度：${result?.length ?? 0}`)
+        setScanPreview(result)
+      }
+      reader.readAsDataURL(file)
+    } catch (err: unknown) {
+      const msg = `[DEBUG] 階段1 例外：${err instanceof Error ? err.message : String(err)}`
+      console.error(msg, err)
+      alert(msg)
+      setScanError("讀取圖片時發生錯誤")
+    }
   }
 
   async function handleScan() {
     if (!scanPreview) return
     setScanLoading(true); setScanError(""); setScanProgress(20); setScanStatus("上傳圖片中...")
     try {
+      // [DEBUG] 階段3：準備發送 API
+      alert(`[DEBUG] 階段3：準備呼叫 /api/ocr\n圖片資料長度：${scanPreview.length}`)
       setScanProgress(40); setScanStatus("辨識中...")
-      const res = await fetch("/api/ocr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: scanPreview }),
-      })
+      let res: Response
+      try {
+        res = await fetch("/api/ocr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: scanPreview }),
+        })
+      } catch (fetchErr: unknown) {
+        const msg = `[DEBUG] 階段3 fetch 網路錯誤：${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`
+        console.error(msg, fetchErr)
+        alert(msg)
+        throw new Error("網路連線失敗，請確認網路後重試")
+      }
+      // [DEBUG] 階段4：收到 API 回應
+      alert(`[DEBUG] 階段4：API 回應\nHTTP 狀態：${res.status} ${res.statusText}`)
       setScanProgress(80); setScanStatus("解析資料...")
       if (!res.ok) {
-        const data = await res.json() as { error?: string }
-        throw new Error(data.error ?? "辨識失敗")
+        let errMsg = "辨識失敗"
+        try {
+          const data = await res.json() as { error?: string }
+          errMsg = data.error ?? errMsg
+        } catch { /* ignore parse error */ }
+        alert(`[DEBUG] 階段4 API 錯誤：${res.status} → ${errMsg}`)
+        throw new Error(errMsg)
       }
       const { text } = await res.json() as { text: string }
+      // [DEBUG] 階段5：成功
+      alert(`[DEBUG] 階段5：辨識成功\nOCR 文字前100字：${text?.slice(0, 100)}`)
       const parsed = parseCustomerText(text)
       setForm({ name: parsed.name, phone: parsed.phone, lineId: parsed.lineId, idNumber: "", address: parsed.address, notes: "" })
       const pet = parsePetFromText(text)
       if (pet) setPetForm((f) => ({ ...f, name: pet.name, species: pet.species, breed: pet.breed }))
       setScanProgress(100); setScanDone(true)
     } catch (err: unknown) {
-      setScanError(err instanceof Error ? err.message : "辨識失敗，請重試")
+      const msg = err instanceof Error ? err.message : "辨識失敗，請重試"
+      console.error("[DEBUG] handleScan 最終捕捉到錯誤：", err)
+      setScanError(msg)
     } finally {
       setScanLoading(false)
     }
