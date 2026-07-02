@@ -219,7 +219,7 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
       {/* OCR Scan */}
       <Card className="border-dashed border-indigo-200 bg-indigo-50/40">
         <CardContent className="pt-4 pb-4">
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
+          <input ref={fileInputRef} type="file" accept="image/*" className="absolute w-px h-px opacity-0 overflow-hidden pointer-events-none" onChange={handleImageSelect} />
           {!scanPreview ? (
             <button type="button" onClick={() => fileInputRef.current?.click()}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-100 transition-colors text-sm font-medium">
