@@ -1,4 +1,4 @@
-# PetGroomPro — 完成報告 (v1.0 MVP)
+# PetOS71 — 完成報告 (v1.0 MVP)
 
 > 產出日期：2026-05-04  
 > 開發階段：Phase 0 → Phase 5 + Batch B–F + H1–H2  

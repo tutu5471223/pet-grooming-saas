@@ -35,7 +35,7 @@ export default async function SuspendedPage() {
           </p>
 
           <div className="rounded-xl bg-red-50 border border-red-200 p-4 mb-6 text-sm text-red-700">
-            客服信箱：support@petgrooompro.com
+            客服信箱：tutu5471223@gmail.com
           </div>
 
           <form action="/api/auth/signout" method="POST">

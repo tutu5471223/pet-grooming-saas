@@ -1,4 +1,4 @@
-# PetGroomPro — 寵物美容 SaaS 管理系統
+# PetOS71 — 寵物美容 SaaS 管理系統
 
 > MVP v1.0 · 多店家 SaaS · Next.js 16 · Prisma 7 · SQLite
 

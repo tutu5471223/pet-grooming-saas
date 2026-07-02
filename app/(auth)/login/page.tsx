@@ -145,7 +145,7 @@ export default function LoginPage() {
         </p>
 
         <p className="mt-3 text-center text-xs text-gray-400">
-          © 2026 PetGroomPro · 保留所有權利
+          © 2026 PetOS71 · 保留所有權利
         </p>
       </div>
     </div>

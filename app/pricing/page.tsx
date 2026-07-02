@@ -90,7 +90,7 @@ export default function PricingPage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600">
             <Scissors className="h-5 w-5 text-white" />
           </div>
-          <span className="text-lg font-bold text-gray-900">PetGroomPro</span>
+          <span className="text-lg font-bold text-gray-900">PetOS71</span>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/login" className="text-sm text-gray-600 hover:text-gray-900 font-medium">登入</Link>
@@ -227,7 +227,7 @@ export default function PricingPage() {
 
       {/* Footer */}
       <footer className="border-t border-gray-100 py-8 px-4 text-center text-sm text-gray-400">
-        <p>© 2026 PetGroomPro · 保留所有權利 ·
+        <p>© 2026 PetOS71 · 保留所有權利 ·
           <Link href="/login" className="ml-2 hover:text-gray-600">登入</Link>
           <span className="mx-2">·</span>
           <Link href="/register" className="hover:text-gray-600">免費試用</Link>
