@@ -267,12 +267,21 @@ export default function NewCustomerPage() {
       {/* Scan section */}
       <Card className="border-dashed border-indigo-200 bg-indigo-50/40">
         <CardContent className="pt-4 pb-4">
-          <input ref={fileInputRef} type="file" accept="image/*" className="absolute w-px h-px opacity-0 overflow-hidden pointer-events-none" onChange={handleImageSelect} />
+          <input
+            id="scan-file-customer"
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ position: "absolute", width: "1px", height: "1px", opacity: 0, overflow: "hidden" }}
+            onChange={handleImageSelect}
+          />
           {!scanPreview ? (
-            <button type="button" onClick={() => fileInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-100 transition-colors text-sm font-medium">
+            <label
+              htmlFor="scan-file-customer"
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-100 transition-colors text-sm font-medium cursor-pointer"
+            >
               <Camera className="h-4 w-4" />掃描紙本快速建檔
-            </button>
+            </label>
           ) : (
             <div className="space-y-3">
               <div className="relative">
