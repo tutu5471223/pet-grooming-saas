@@ -3,7 +3,7 @@ import { Lock } from "lucide-react"
 import { prisma } from "@/lib/prisma"
 import { headers } from "next/headers"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Scissors, Home, Star, FileText, Users, CreditCard, Link2, Bell, Zap, MessageCircle } from "lucide-react"
+import { Scissors, Home, Star, FileText, Users, CreditCard, Link2, Bell, Zap, MessageCircle, ScanLine } from "lucide-react"
 import { ServiceManager } from "@/components/settings/service-manager"
 import { RoomManager } from "@/components/settings/room-manager"
 import { ContractTemplateEditor } from "@/components/settings/contract-template-editor"
@@ -15,6 +15,7 @@ import { MenuLink } from "@/components/settings/menu-link"
 import { ReminderSettings } from "@/components/settings/reminder-settings"
 import { SubscriptionInfo } from "@/components/settings/subscription-info"
 import { LineSettings } from "@/components/settings/line-settings"
+import { OcrSettings } from "@/components/settings/ocr-settings"
 
 function AccessDeniedTab() {
   return (
@@ -96,6 +97,9 @@ export default async function SettingsPage() {
           <TabsTrigger value="subscription" className="gap-1.5">
             <Zap className="h-4 w-4" /> 訂閱方案
           </TabsTrigger>
+          <TabsTrigger value="ocr" className="gap-1.5">
+            <ScanLine className="h-4 w-4" /> OCR 設定
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="services" className="mt-4">
@@ -155,6 +159,12 @@ export default async function SettingsPage() {
 
         <TabsContent value="subscription" className="mt-4">
           {isAdmin ? <SubscriptionInfo /> : <AccessDeniedTab />}
+        </TabsContent>
+
+        <TabsContent value="ocr" className="mt-4">
+          {isAdmin ? (
+            <OcrSettings shopId={shopId} initialKeywords={shop?.ocrKeywords ?? null} />
+          ) : <AccessDeniedTab />}
         </TabsContent>
       </Tabs>
     </div>

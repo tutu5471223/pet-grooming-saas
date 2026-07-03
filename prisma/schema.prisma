@@ -27,6 +27,7 @@ model Shop {
   restDays           String?
   reminderTemplate   String?
   lineChannelToken   String?
+  ocrKeywords        String?
   status             String   @default("ACTIVE")
   registeredAt       DateTime @default(now())
   onboardingDone     Boolean  @default(true)

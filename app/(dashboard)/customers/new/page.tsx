@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Camera, X, CheckCircle } from "lucide-react"
 import Link from "next/link"
@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { DEFAULT_OCR_KEYWORDS, type OcrKeywords } from "@/lib/ocr-keywords"
 
 const PERSONALITY_OPTIONS = ["黏人", "膽小", "親人", "活潑", "易怒", "咬人", "討厭狗狗", "討厭貓咪"]
 const BLOW_DRYER_OPTIONS = ["完全接受", "有點怕", "非常怕"]
@@ -55,8 +56,9 @@ function IssueRow({ label, active, note, onToggle, onNote }: {
 
 const DOG_BREEDS = ["貴賓犬", "貴賓", "瑪爾濟斯", "馬爾他", "黃金獵犬", "黃金", "法國鬥牛", "拉布拉多", "雪納瑞", "薩摩耶", "哈士奇", "米格魯", "吉娃娃", "約克夏", "博美犬", "博美", "柴犬", "西施", "臘腸", "柯基", "米克斯", "混種", "法鬥", "比熊", "瑪爾", "柴"]
 const CAT_BREEDS = ["蘇格蘭折耳", "俄羅斯藍", "橘貓", "虎斑", "三花", "玳瑁", "緬因", "布偶", "暹羅", "英短", "美短", "波斯"]
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-function parseCustomerText(raw: string) {
+function parseCustomerText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
   const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
   const text = lines.join("\n")
   let name = "", phone = "", lineId = "", address = "", idNumber = "", notes = ""
@@ -67,11 +69,18 @@ function parseCustomerText(raw: string) {
     return m ? m[0] : ""
   }
 
-  // ── Section detection: 第一/第二聯絡人 ──────────────────────────────────────
+  const esc = kw.ownerNameKeys.map(escapeRe)
+  const nameLabelRe = new RegExp("(?:" + esc.join("|") + ")\\s*[:：]\\s*([一-龥]{2,5})")
+  const nameLabelFallbackRe = new RegExp("(?:" + esc.join("|") + ")\\s*[:：]?\\s*([一-龥]{2,5})")
+  const nameLabelOnlyRe = new RegExp("^(?:" + esc.join("|") + ")\\s*[:：]?\\s*$")
+  const phoneKwRe = kw.phoneKeys.length > 0 ? new RegExp(kw.phoneKeys.map(escapeRe).join("|")) : null
+  const firstKey = kw.ownerNameKeys[0] ?? ""
+  const secondKey = kw.notesKeys[0] ?? ""
+
   let firstIdx = -1, secondIdx = -1
   for (let i = 0; i < lines.length; i++) {
-    if (firstIdx < 0 && /第一聯絡人/.test(lines[i])) firstIdx = i
-    if (secondIdx < 0 && /第二聯絡人/.test(lines[i])) secondIdx = i
+    if (firstIdx < 0 && firstKey && lines[i].includes(firstKey)) firstIdx = i
+    if (secondIdx < 0 && secondKey && lines[i].includes(secondKey)) secondIdx = i
   }
 
   if (firstIdx >= 0) {
@@ -79,30 +88,28 @@ function parseCustomerText(raw: string) {
     for (let i = firstIdx; i < end; i++) {
       const line = lines[i]
       if (!name) {
-        const m = line.match(/(?:姓名|飼主|主人|戶名|客戶名?)\s*[:：]\s*([一-龥]{2,5})/)
+        const m = line.match(nameLabelRe)
         if (m) { name = m[1] }
-        else if (i === firstIdx) {
-          const rest = line.replace(/第一聯絡人\s*/, "")
+        else if (i === firstIdx && firstKey) {
+          const rest = line.replace(new RegExp(escapeRe(firstKey) + "\\s*"), "")
           const nm = rest.match(/^([一-龥]{2,5})[\s　]/)
           if (nm) name = nm[1]
         }
       }
       if (!phone) phone = phoneFromStr(line)
     }
-
   }
 
-  // ── 第二聯絡人 → 備註（獨立於 firstIdx，只要有 secondIdx 就處理）──────────────
-  if (secondIdx >= 0) {
+  if (secondIdx >= 0 && secondKey) {
     const end2 = Math.min(secondIdx + 6, lines.length)
     let s2name = "", s2phone = ""
     for (let i = secondIdx; i < end2; i++) {
       const line = lines[i]
       if (!s2name) {
-        const m = line.match(/(?:姓名|飼主|主人|戶名|客戶名?)\s*[:：]\s*([一-龥]{2,5})/)
+        const m = line.match(nameLabelRe)
         if (m) { s2name = m[1] }
         else if (i === secondIdx) {
-          const rest = line.replace(/第二聯絡人\s*/, "")
+          const rest = line.replace(new RegExp(escapeRe(secondKey) + "\\s*"), "")
           const nm = rest.match(/^([一-龥]{2,5})[\s　]/)
           if (nm) s2name = nm[1]
         }
@@ -110,25 +117,27 @@ function parseCustomerText(raw: string) {
       if (!s2phone) s2phone = phoneFromStr(line)
     }
     if (s2name || s2phone) {
-      notes = `第二聯絡人：${s2name}${s2phone ? " " + s2phone : ""}`
+      notes = `${secondKey}：${s2name}${s2phone ? " " + s2phone : ""}`
     }
   }
 
-  // ── Fallback name ─────────────────────────────────────────────────────────
+  // Fallback name: label same line
   if (!name) {
     for (const line of lines) {
-      const m = line.match(/(?:姓名|飼主|主人|戶名|客戶名?)\s*[:：]?\s*([一-龥]{2,5})/)
+      const m = line.match(nameLabelFallbackRe)
       if (m) { name = m[1]; break }
     }
   }
+  // Label on one line, value on next
   if (!name) {
     for (let i = 0; i < lines.length - 1; i++) {
-      if (/^(?:姓名|飼主|主人)\s*[:：]?\s*$/.test(lines[i])) {
+      if (nameLabelOnlyRe.test(lines[i])) {
         const next = lines[i + 1]
         if (/^[一-龥]{2,5}$/.test(next)) { name = next; break }
       }
     }
   }
+  // Standalone CJK
   if (!name) {
     const skipRe = /電話|地址|LINE|晶片|品種|物種|日期|備註|寵物|美容|姓名|飼主|主人|性別|生日|縣|市|區|路|街|聯絡人/
     for (const line of lines) {
@@ -140,12 +149,22 @@ function parseCustomerText(raw: string) {
     }
   }
 
-  // ── Fallback phone ────────────────────────────────────────────────────────
+  // Fallback phone
   if (!phone) {
     const limit = secondIdx > 0 ? secondIdx : lines.length
-    for (let i = 0; i < limit; i++) {
-      const p = phoneFromStr(lines[i])
-      if (p) { phone = p; break }
+    if (phoneKwRe) {
+      for (let i = 0; i < limit; i++) {
+        if (phoneKwRe.test(lines[i])) {
+          const p = phoneFromStr(lines[i])
+          if (p) { phone = p; break }
+        }
+      }
+    }
+    if (!phone) {
+      for (let i = 0; i < limit; i++) {
+        const p = phoneFromStr(lines[i])
+        if (p) { phone = p; break }
+      }
     }
     if (!phone) {
       for (const line of lines) {
@@ -155,7 +174,7 @@ function parseCustomerText(raw: string) {
     }
   }
 
-  // ── LINE ID ──────────────────────────────────────────────────────────────
+  // LINE ID
   for (let i = 0; i < lines.length; i++) {
     if (/LINE/i.test(lines[i])) {
       const after = lines[i].replace(/^.*LINE\s*(?:ID\s*)?[:：＝]?\s*/i, "").trim()
@@ -165,11 +184,11 @@ function parseCustomerText(raw: string) {
     }
   }
 
-  // ── Taiwan ID ─────────────────────────────────────────────────────────────
+  // Taiwan ID
   const idMatch = text.match(/[A-Z][12]\d{8}/)
   if (idMatch) idNumber = idMatch[0]
 
-  // ── Address ───────────────────────────────────────────────────────────────
+  // Address
   for (const line of lines) {
     if (!address) {
       const clean = line.replace(/^地址\s*[:：]?\s*/, "").trim()
@@ -194,25 +213,31 @@ function parseCustomerText(raw: string) {
   return { name, phone, lineId, address, idNumber, notes }
 }
 
-function parsePetFromText(raw: string) {
+function parsePetFromText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
   const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
   const text = lines.join("\n")
   let name = "", species = "犬", breed = "", birthday = ""
   let foundPet = false
 
+  const petNameRe = new RegExp("(?:" + kw.petNameKeys.map(escapeRe).join("|") + ")\\s*[:：]")
+  const breedRe = new RegExp("(?:" + kw.breedKeys.map(escapeRe).join("|") + ")")
+  const breedStripRe = new RegExp(".*(?:" + kw.breedKeys.map(escapeRe).join("|") + ")\\s*[:：]?\\s*")
+  const birthdayRe = new RegExp("(?:" + kw.birthdayKeys.map(escapeRe).join("|") + ")")
+  const birthdayStripRe = new RegExp(".*(?:" + kw.birthdayKeys.map(escapeRe).join("|") + ")\\s*[:：]?\\s*")
+
   for (const line of lines) {
-    if (/(?:寵物名稱?|名字|名稱|小名)\s*[:：]/.test(line)) {
+    if (petNameRe.test(line)) {
       name = line.replace(/.*[:：]\s*/, "").trim(); foundPet = true; break
     }
   }
   for (const line of lines) {
-    if (/品種/.test(line)) {
-      breed = line.replace(/品種\s*[:：]?\s*/, "").trim(); foundPet = true; break
+    if (breedRe.test(line)) {
+      breed = line.replace(breedStripRe, "").trim(); foundPet = true; break
     }
   }
   for (const line of lines) {
-    if (/生日|出生日期|出生年月日/.test(line)) {
-      const rest = line.replace(/.*(?:生日|出生日期|出生年月日)\s*[:：]?\s*/, "").trim()
+    if (birthdayRe.test(line)) {
+      const rest = line.replace(birthdayStripRe, "").trim()
       const m = rest.match(/(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/)
       if (m) {
         let year = parseInt(m[1])
@@ -313,6 +338,14 @@ export default function NewCustomerPage() {
   })
   const [petForm, setPetForm] = useState<PetForm>(EMPTY_PET)
 
+  const [ocrKw, setOcrKw] = useState<OcrKeywords>(DEFAULT_OCR_KEYWORDS)
+  useEffect(() => {
+    fetch("/api/settings/ocr")
+      .then((r) => (r.ok ? (r.json() as Promise<OcrKeywords>) : null))
+      .then((data) => { if (data) setOcrKw(data) })
+      .catch(() => {})
+  }, [])
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [scanPreview, setScanPreview] = useState<string | null>(null)
   const [scanLoading, setScanLoading] = useState(false)
@@ -374,9 +407,9 @@ export default function NewCustomerPage() {
         throw new Error(errMsg)
       }
       const { text } = await res.json() as { text: string }
-      const parsed = parseCustomerText(text)
+      const parsed = parseCustomerText(text, ocrKw)
       setForm({ name: parsed.name, phone: parsed.phone, lineId: parsed.lineId, idNumber: parsed.idNumber, address: parsed.address, notes: parsed.notes })
-      const pet = parsePetFromText(text)
+      const pet = parsePetFromText(text, ocrKw)
       if (pet) setPetForm((f) => ({ ...f, name: pet.name, species: pet.species, breed: pet.breed, birthday: pet.birthday }))
       setScanProgress(100); setScanDone(true)
     } catch (err: unknown) {

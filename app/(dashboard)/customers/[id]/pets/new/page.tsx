@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { use } from "react"
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { DEFAULT_OCR_KEYWORDS, type OcrKeywords } from "@/lib/ocr-keywords"
 
 const PERSONALITY_OPTIONS = ["黏人", "膽小", "親人", "活潑", "易怒", "咬人", "討厭狗狗", "討厭貓咪"]
 const BLOW_DRYER_OPTIONS = ["完全接受", "有點怕", "非常怕"]
@@ -40,20 +41,27 @@ const EMPTY_FORM = {
 
 const DOG_BREEDS = ["貴賓犬", "貴賓", "瑪爾濟斯", "馬爾他", "黃金獵犬", "黃金", "法國鬥牛", "拉布拉多", "雪納瑞", "薩摩耶", "哈士奇", "米格魯", "吉娃娃", "約克夏", "博美犬", "博美", "柴犬", "西施", "臘腸", "柯基", "米克斯", "混種", "法鬥", "比熊", "瑪爾", "柴"]
 const CAT_BREEDS = ["蘇格蘭折耳", "俄羅斯藍", "橘貓", "虎斑", "三花", "玳瑁", "緬因", "布偶", "暹羅", "英短", "美短", "波斯"]
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-function parsePetText(raw: string) {
+function parsePetText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
   const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
   const text = lines.join("\n")
   let name = "", species = "犬", breed = "", chipNumber = "", birthday = ""
 
+  const petNameRe = new RegExp("(?:" + kw.petNameKeys.map(escapeRe).join("|") + ")\\s*[:：]")
+  const breedRe = new RegExp("(?:" + kw.breedKeys.map(escapeRe).join("|") + ")")
+  const breedStripRe = new RegExp(".*(?:" + kw.breedKeys.map(escapeRe).join("|") + ")\\s*[:：]?\\s*")
+  const birthdayRe = new RegExp("(?:" + kw.birthdayKeys.map(escapeRe).join("|") + ")")
+  const birthdayStripRe = new RegExp(".*(?:" + kw.birthdayKeys.map(escapeRe).join("|") + ")\\s*[:：]?\\s*")
+
   for (const line of lines) {
-    if (/(?:寵物名稱?|名字|名稱|小名)\s*[:：]/.test(line)) {
+    if (petNameRe.test(line)) {
       name = line.replace(/.*[:：]\s*/, "").trim(); break
     }
   }
   for (const line of lines) {
-    if (/品種/.test(line)) {
-      breed = line.replace(/品種\s*[:：]?\s*/, "").trim(); break
+    if (breedRe.test(line)) {
+      breed = line.replace(breedStripRe, "").trim(); break
     }
   }
   for (const line of lines) {
@@ -68,8 +76,8 @@ function parsePetText(raw: string) {
     if (m) chipNumber = m[0]
   }
   for (const line of lines) {
-    if (/生日|出生日期|出生年月日/.test(line)) {
-      const rest = line.replace(/.*(?:生日|出生日期|出生年月日)\s*[:：]?\s*/, "").trim()
+    if (birthdayRe.test(line)) {
+      const rest = line.replace(birthdayStripRe, "").trim()
       const m = rest.match(/(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/)
       if (m) {
         let year = parseInt(m[1])
@@ -178,6 +186,13 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [form, setForm] = useState(EMPTY_FORM)
+  const [ocrKw, setOcrKw] = useState<OcrKeywords>(DEFAULT_OCR_KEYWORDS)
+  useEffect(() => {
+    fetch("/api/settings/ocr")
+      .then((r) => (r.ok ? (r.json() as Promise<OcrKeywords>) : null))
+      .then((data) => { if (data) setOcrKw(data) })
+      .catch(() => {})
+  }, [])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [scanPreview, setScanPreview] = useState<string | null>(null)
@@ -231,7 +246,7 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
         throw new Error(data.error ?? "辨識失敗")
       }
       const { text } = await res.json() as { text: string }
-      const parsed = parsePetText(text)
+      const parsed = parsePetText(text, ocrKw)
       setForm((prev) => ({
         ...prev,
         name: parsed.name || prev.name,

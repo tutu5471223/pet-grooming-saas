@@ -21,6 +21,7 @@ const shopUpdateSchema = z.object({
   reminderTemplate: longText.optional().nullable(),
   contractTemplate: longText.optional().nullable(),
   lineChannelToken: shortText.max(1000).optional().nullable(),
+  ocrKeywords: longText.optional().nullable(),
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -61,6 +62,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         contractTemplate,
         lineChannelToken:
           body.lineChannelToken !== undefined ? (body.lineChannelToken ?? null) : undefined,
+        ocrKeywords:
+          body.ocrKeywords !== undefined ? (body.ocrKeywords ?? null) : undefined,
       },
     })
 
