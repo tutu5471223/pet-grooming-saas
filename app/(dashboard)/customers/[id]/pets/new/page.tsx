@@ -43,6 +43,17 @@ const DOG_BREEDS = ["貴賓犬", "貴賓", "瑪爾濟斯", "馬爾他", "黃金�
 const CAT_BREEDS = ["蘇格蘭折耳", "俄羅斯藍", "橘貓", "虎斑", "三花", "玳瑁", "緬因", "布偶", "暹羅", "英短", "美短", "波斯"]
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
+function parseDateStr(s: string): string {
+  const m = s.match(/(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/)
+    ?? s.match(/(\d{2,4})年(\d{1,2})月(\d{1,2})日?/)
+  if (!m) return ""
+  let year = parseInt(m[1])
+  const month = parseInt(m[2])
+  const day = parseInt(m[3])
+  if (year < 1912) year += 1911
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+}
+
 function normalizeBirthday(raw: string): string {
   const clean = raw.trim()
   if (!clean) return ""
@@ -65,15 +76,20 @@ function parsePetText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
   const breedStripRe = new RegExp(".*(?:" + kw.breedKeys.map(escapeRe).join("|") + ")\\s*[:：]?\\s*")
   const birthdayRe = new RegExp("(?:" + kw.birthdayKeys.map(escapeRe).join("|") + ")")
   const birthdayStripRe = new RegExp(".*(?:" + kw.birthdayKeys.map(escapeRe).join("|") + ")\\s*[:：]?\\s*")
+  const allBreeds = [...DOG_BREEDS, ...CAT_BREEDS]
 
   for (const line of lines) {
     if (petNameRe.test(line)) {
       name = line.replace(/.*[:：]\s*/, "").trim(); break
     }
   }
-  for (const line of lines) {
-    if (breedRe.test(line)) {
-      breed = line.replace(breedStripRe, "").trim(); break
+  for (let i = 0; i < lines.length; i++) {
+    if (breedRe.test(lines[i])) {
+      breed = lines[i].replace(breedStripRe, "").trim()
+      if (!breed && i + 1 < lines.length && allBreeds.some((b) => lines[i + 1].includes(b))) {
+        breed = lines[i + 1]
+      }
+      break
     }
   }
   for (const line of lines) {
@@ -87,17 +103,14 @@ function parsePetText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
     const m = text.match(/\b\d{15}\b/)
     if (m) chipNumber = m[0]
   }
-  for (const line of lines) {
-    if (birthdayRe.test(line)) {
-      const rest = line.replace(birthdayStripRe, "").trim()
-      const m = rest.match(/(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/)
-        ?? rest.match(/(\d{2,4})年(\d{1,2})月(\d{1,2})日?/)
-      if (m) {
-        let year = parseInt(m[1])
-        const month = parseInt(m[2])
-        const day = parseInt(m[3])
-        if (year < 1912) year += 1911
-        birthday = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+  for (let i = 0; i < lines.length; i++) {
+    if (birthdayRe.test(lines[i])) {
+      const sameLineRest = lines[i].replace(birthdayStripRe, "").trim()
+      const candidates = sameLineRest ? [sameLineRest] : []
+      if (i + 1 < lines.length) candidates.push(lines[i + 1])
+      for (const c of candidates) {
+        const d = parseDateStr(c)
+        if (d) { birthday = d; break }
       }
       break
     }
@@ -259,23 +272,16 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
         throw new Error(data.error ?? "辨識失敗")
       }
       const { text } = await res.json() as { text: string }
-      console.log("[OCR] 原始文字：\n", text)
       const parsed = parsePetText(text, ocrKw)
-      console.log("[OCR] parsePetText 回傳：", parsed)
-      console.log("[OCR] birthday 值：", parsed.birthday)
-      setForm((prev) => {
-        const next = {
-          ...prev,
-          name: parsed.name || prev.name,
-          species: parsed.species,
-          breed: parsed.breed || prev.breed,
-          chipNumber: parsed.chipNumber || prev.chipNumber,
-          birthday: parsed.birthday || prev.birthday,
-          notes: parsed.notes || prev.notes,
-        }
-        console.log("[OCR] setForm 設定：", next)
-        return next
-      })
+      setForm((prev) => ({
+        ...prev,
+        name: parsed.name || prev.name,
+        species: parsed.species,
+        breed: parsed.breed || prev.breed,
+        chipNumber: parsed.chipNumber || prev.chipNumber,
+        birthday: parsed.birthday || prev.birthday,
+        notes: parsed.notes || prev.notes,
+      }))
       setScanProgress(100); setScanDone(true)
     } catch (err: unknown) {
       setScanError(err instanceof Error ? err.message : "辨識失敗，請重試")

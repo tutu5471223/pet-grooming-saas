@@ -225,8 +225,18 @@ function parseCustomerText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) 
   return { name, phone, lineId, address, idNumber, notes }
 }
 
+function parseDateStr(s: string): string {
+  const m = s.match(/(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/)
+    ?? s.match(/(\d{2,4})年(\d{1,2})月(\d{1,2})日?/)
+  if (!m) return ""
+  let year = parseInt(m[1])
+  const month = parseInt(m[2])
+  const day = parseInt(m[3])
+  if (year < 1912) year += 1911
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+}
+
 function parsePetFromText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
-  alert(`[OCR raw]\n${raw}`)
   const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
   const text = lines.join("\n")
   let name = "", species = "犬", breed = "", birthday = ""
@@ -237,29 +247,31 @@ function parsePetFromText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
   const breedStripRe = new RegExp(".*(?:" + kw.breedKeys.map(escapeRe).join("|") + ")\\s*[:：]?\\s*")
   const birthdayRe = new RegExp("(?:" + kw.birthdayKeys.map(escapeRe).join("|") + ")")
   const birthdayStripRe = new RegExp(".*(?:" + kw.birthdayKeys.map(escapeRe).join("|") + ")\\s*[:：]?\\s*")
+  const allBreeds = [...DOG_BREEDS, ...CAT_BREEDS]
 
   for (const line of lines) {
     if (petNameRe.test(line)) {
       name = line.replace(/.*[:：]\s*/, "").trim(); foundPet = true; break
     }
   }
-  for (const line of lines) {
-    if (breedRe.test(line)) {
-      breed = line.replace(breedStripRe, "").trim(); foundPet = true; break
+  for (let i = 0; i < lines.length; i++) {
+    if (breedRe.test(lines[i])) {
+      breed = lines[i].replace(breedStripRe, "").trim()
+      if (!breed && i + 1 < lines.length && allBreeds.some((b) => lines[i + 1].includes(b))) {
+        breed = lines[i + 1]
+      }
+      if (breed) foundPet = true
+      break
     }
   }
-  for (const line of lines) {
-    if (birthdayRe.test(line)) {
-      const rest = line.replace(birthdayStripRe, "").trim()
-      const m = rest.match(/(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/)
-        ?? rest.match(/(\d{2,4})年(\d{1,2})月(\d{1,2})日?/)
-      if (m) {
-        let year = parseInt(m[1])
-        const month = parseInt(m[2])
-        const day = parseInt(m[3])
-        if (year < 1912) year += 1911
-        birthday = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-        foundPet = true
+  for (let i = 0; i < lines.length; i++) {
+    if (birthdayRe.test(lines[i])) {
+      const sameLineRest = lines[i].replace(birthdayStripRe, "").trim()
+      const candidates = sameLineRest ? [sameLineRest] : []
+      if (i + 1 < lines.length) candidates.push(lines[i + 1])
+      for (const c of candidates) {
+        const d = parseDateStr(c)
+        if (d) { birthday = d; foundPet = true; break }
       }
       break
     }
@@ -424,12 +436,7 @@ export default function NewCustomerPage() {
       const parsed = parseCustomerText(text, ocrKw)
       setForm({ name: parsed.name, phone: parsed.phone, lineId: parsed.lineId, idNumber: parsed.idNumber, address: parsed.address, notes: parsed.notes })
       const pet = parsePetFromText(text, ocrKw)
-      alert(`[OCR 生日 debug]\nparsePetFromText birthday：${JSON.stringify(pet?.birthday)}\npet 為 null：${pet === null}`)
-      if (pet) setPetForm((f) => {
-        const next = { ...f, name: pet.name, species: pet.species, breed: pet.breed, birthday: pet.birthday }
-        alert(`[OCR 生日 debug]\nsetPetForm birthday 設定為：${JSON.stringify(next.birthday)}`)
-        return next
-      })
+      if (pet) setPetForm((f) => ({ ...f, name: pet.name, species: pet.species, breed: pet.breed, birthday: pet.birthday }))
       setScanProgress(100); setScanDone(true)
     } catch (err: unknown) {
       setScanError(err instanceof Error ? err.message : "辨識失敗，請重試")
