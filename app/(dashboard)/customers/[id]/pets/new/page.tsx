@@ -259,16 +259,23 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
         throw new Error(data.error ?? "辨識失敗")
       }
       const { text } = await res.json() as { text: string }
+      console.log("[OCR] 原始文字：\n", text)
       const parsed = parsePetText(text, ocrKw)
-      setForm((prev) => ({
-        ...prev,
-        name: parsed.name || prev.name,
-        species: parsed.species,
-        breed: parsed.breed || prev.breed,
-        chipNumber: parsed.chipNumber || prev.chipNumber,
-        birthday: parsed.birthday || prev.birthday,
-        notes: parsed.notes || prev.notes,
-      }))
+      console.log("[OCR] parsePetText 回傳：", parsed)
+      console.log("[OCR] birthday 值：", parsed.birthday)
+      setForm((prev) => {
+        const next = {
+          ...prev,
+          name: parsed.name || prev.name,
+          species: parsed.species,
+          breed: parsed.breed || prev.breed,
+          chipNumber: parsed.chipNumber || prev.chipNumber,
+          birthday: parsed.birthday || prev.birthday,
+          notes: parsed.notes || prev.notes,
+        }
+        console.log("[OCR] setForm 設定：", next)
+        return next
+      })
       setScanProgress(100); setScanDone(true)
     } catch (err: unknown) {
       setScanError(err instanceof Error ? err.message : "辨識失敗，請重試")
