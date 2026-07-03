@@ -420,15 +420,13 @@ export default function NewCustomerPage() {
         throw new Error(errMsg)
       }
       const { text } = await res.json() as { text: string }
-      console.log("[OCR] 原始文字：\n", text)
       const parsed = parseCustomerText(text, ocrKw)
       setForm({ name: parsed.name, phone: parsed.phone, lineId: parsed.lineId, idNumber: parsed.idNumber, address: parsed.address, notes: parsed.notes })
       const pet = parsePetFromText(text, ocrKw)
-      console.log("[OCR] parsePetFromText 回傳：", pet)
-      console.log("[OCR] birthday 值：", pet?.birthday)
+      alert(`[OCR 生日 debug]\nparsePetFromText birthday：${JSON.stringify(pet?.birthday)}\npet 為 null：${pet === null}`)
       if (pet) setPetForm((f) => {
         const next = { ...f, name: pet.name, species: pet.species, breed: pet.breed, birthday: pet.birthday }
-        console.log("[OCR] setPetForm 設定：", next)
+        alert(`[OCR 生日 debug]\nsetPetForm birthday 設定為：${JSON.stringify(next.birthday)}`)
         return next
       })
       setScanProgress(100); setScanDone(true)
