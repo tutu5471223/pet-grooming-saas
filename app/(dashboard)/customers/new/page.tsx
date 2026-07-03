@@ -58,6 +58,18 @@ const DOG_BREEDS = ["貴賓犬", "貴賓", "瑪爾濟斯", "馬爾他", "黃金�
 const CAT_BREEDS = ["蘇格蘭折耳", "俄羅斯藍", "橘貓", "虎斑", "三花", "玳瑁", "緬因", "布偶", "暹羅", "英短", "美短", "波斯"]
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
+function normalizeBirthday(raw: string): string {
+  const clean = raw.trim()
+  if (!clean) return ""
+  const m = clean.match(/^(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/)
+  if (!m) return clean
+  let year = parseInt(m[1])
+  const month = parseInt(m[2])
+  const day = parseInt(m[3])
+  if (year < 1912) year += 1911
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+}
+
 function parseCustomerText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
   const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
   const text = lines.join("\n")
@@ -450,7 +462,7 @@ export default function NewCustomerPage() {
             species: petForm.species,
             breed: petForm.breed.trim() || null,
             gender: petForm.gender,
-            birthday: petForm.birthday || null,
+            birthday: normalizeBirthday(petForm.birthday) || null,
             personality: petForm.personality,
             boneIssue: petForm.boneIssue, boneNote: petForm.boneNote || null,
             skinIssue: petForm.skinIssue, skinNote: petForm.skinNote || null,
@@ -643,8 +655,11 @@ export default function NewCustomerPage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="petBirthday">生日</Label>
-              <Input id="petBirthday" type="date" value={petForm.birthday}
-                onChange={(e) => setPet("birthday", e.target.value)} className="w-48" />
+              <Input id="petBirthday" type="text"
+                placeholder="例如：2020-03-15 或 109-03-15（民國）"
+                value={petForm.birthday}
+                onChange={(e) => setPet("birthday", e.target.value)}
+                onBlur={(e) => setPet("birthday", normalizeBirthday(e.target.value))} />
             </div>
           </CardContent>
         </Card>

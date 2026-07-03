@@ -19,6 +19,18 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+function normalizeBirthday(raw: string): string {
+  const clean = raw.trim()
+  if (!clean) return ""
+  const m = clean.match(/^(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/)
+  if (!m) return clean
+  let year = parseInt(m[1])
+  const month = parseInt(m[2])
+  const day = parseInt(m[3])
+  if (year < 1912) year += 1911
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+}
+
 const PERSONALITY_OPTIONS = ["黏人", "膽小", "親人", "活潑", "易怒", "咬人", "討厭狗狗", "討厭貓咪"]
 const BLOW_DRYER_OPTIONS = ["完全接受", "有點怕", "非常怕"]
 const AFTER_GROOM_OPTIONS = ["自由落地", "桌上限制活動", "圍片限制活動", "回到自己外出籠", "以上皆可"]
@@ -154,7 +166,7 @@ export default function PetEditPage({
           species: form.species,
           breed: form.breed || null,
           gender: form.gender,
-          birthday: form.birthday || null,
+          birthday: normalizeBirthday(form.birthday) || null,
           chipNumber: form.chipNumber || null,
           notes: form.notes || null,
           personality: form.personality,
@@ -251,7 +263,11 @@ export default function PetEditPage({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="birthday">生日</Label>
-                    <Input id="birthday" type="date" value={form.birthday} onChange={(e) => set("birthday", e.target.value)} />
+                    <Input id="birthday" type="text"
+                    placeholder="例如：2020-03-15 或 109-03-15（民國）"
+                    value={form.birthday}
+                    onChange={(e) => set("birthday", e.target.value)}
+                    onBlur={(e) => set("birthday", normalizeBirthday(e.target.value))} />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="chipNumber">晶片號碼</Label>

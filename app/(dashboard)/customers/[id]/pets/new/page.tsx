@@ -43,6 +43,18 @@ const DOG_BREEDS = ["貴賓犬", "貴賓", "瑪爾濟斯", "馬爾他", "黃金�
 const CAT_BREEDS = ["蘇格蘭折耳", "俄羅斯藍", "橘貓", "虎斑", "三花", "玳瑁", "緬因", "布偶", "暹羅", "英短", "美短", "波斯"]
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
+function normalizeBirthday(raw: string): string {
+  const clean = raw.trim()
+  if (!clean) return ""
+  const m = clean.match(/^(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/)
+  if (!m) return clean
+  let year = parseInt(m[1])
+  const month = parseInt(m[2])
+  const day = parseInt(m[3])
+  if (year < 1912) year += 1911
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+}
+
 function parsePetText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
   const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
   const text = lines.join("\n")
@@ -281,7 +293,7 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
           ...form,
           customerId,
           breed: form.breed || null,
-          birthday: form.birthday || null,
+          birthday: normalizeBirthday(form.birthday) || null,
           chipNumber: form.chipNumber || null,
           notes: form.notes || null,
           boneNote: form.boneNote || null,
@@ -428,8 +440,11 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="birthday">生日</Label>
-                    <Input id="birthday" type="date" value={form.birthday}
-                      onChange={(e) => set("birthday", e.target.value)} />
+                    <Input id="birthday" type="text"
+                      placeholder="例如：2020-03-15 或 109-03-15（民國）"
+                      value={form.birthday}
+                      onChange={(e) => set("birthday", e.target.value)}
+                      onBlur={(e) => set("birthday", normalizeBirthday(e.target.value))} />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="chipNumber">晶片號碼</Label>
