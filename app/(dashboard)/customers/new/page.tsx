@@ -90,25 +90,27 @@ function parseCustomerText(raw: string) {
       if (!phone) phone = phoneFromStr(line)
     }
 
-    if (secondIdx >= 0) {
-      const end2 = Math.min(secondIdx + 6, lines.length)
-      let s2name = "", s2phone = ""
-      for (let i = secondIdx; i < end2; i++) {
-        const line = lines[i]
-        if (!s2name) {
-          const m = line.match(/(?:姓名|飼主|主人|戶名|客戶名?)\s*[:：]\s*([一-龥]{2,5})/)
-          if (m) { s2name = m[1] }
-          else if (i === secondIdx) {
-            const rest = line.replace(/第二聯絡人\s*/, "")
-            const nm = rest.match(/^([一-龥]{2,5})[\s　]/)
-            if (nm) s2name = nm[1]
-          }
+  }
+
+  // ── 第二聯絡人 → 備註（獨立於 firstIdx，只要有 secondIdx 就處理）──────────────
+  if (secondIdx >= 0) {
+    const end2 = Math.min(secondIdx + 6, lines.length)
+    let s2name = "", s2phone = ""
+    for (let i = secondIdx; i < end2; i++) {
+      const line = lines[i]
+      if (!s2name) {
+        const m = line.match(/(?:姓名|飼主|主人|戶名|客戶名?)\s*[:：]\s*([一-龥]{2,5})/)
+        if (m) { s2name = m[1] }
+        else if (i === secondIdx) {
+          const rest = line.replace(/第二聯絡人\s*/, "")
+          const nm = rest.match(/^([一-龥]{2,5})[\s　]/)
+          if (nm) s2name = nm[1]
         }
-        if (!s2phone) s2phone = phoneFromStr(line)
       }
-      if (s2name || s2phone) {
-        notes = `第二聯絡人：${s2name}${s2phone ? " " + s2phone : ""}`
-      }
+      if (!s2phone) s2phone = phoneFromStr(line)
+    }
+    if (s2name || s2phone) {
+      notes = `第二聯絡人：${s2name}${s2phone ? " " + s2phone : ""}`
     }
   }
 
@@ -130,7 +132,11 @@ function parseCustomerText(raw: string) {
   if (!name) {
     const skipRe = /電話|地址|LINE|晶片|品種|物種|日期|備註|寵物|美容|姓名|飼主|主人|性別|生日|縣|市|區|路|街|聯絡人/
     for (const line of lines) {
-      if (/^[一-龥]{2,4}$/.test(line) && !skipRe.test(line)) { name = line; break }
+      if (
+        /^[一-龥]{2,4}$/.test(line) &&
+        !skipRe.test(line) &&
+        ![...DOG_BREEDS, ...CAT_BREEDS].includes(line)
+      ) { name = line; break }
     }
   }
 
@@ -191,7 +197,7 @@ function parseCustomerText(raw: string) {
 function parsePetFromText(raw: string) {
   const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
   const text = lines.join("\n")
-  let name = "", species = "犬", breed = ""
+  let name = "", species = "犬", breed = "", birthday = ""
   let foundPet = false
 
   for (const line of lines) {
@@ -202,6 +208,21 @@ function parsePetFromText(raw: string) {
   for (const line of lines) {
     if (/品種/.test(line)) {
       breed = line.replace(/品種\s*[:：]?\s*/, "").trim(); foundPet = true; break
+    }
+  }
+  for (const line of lines) {
+    if (/生日|出生日期|出生年月日/.test(line)) {
+      const rest = line.replace(/.*(?:生日|出生日期|出生年月日)\s*[:：]?\s*/, "").trim()
+      const m = rest.match(/(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/)
+      if (m) {
+        let year = parseInt(m[1])
+        const month = parseInt(m[2])
+        const day = parseInt(m[3])
+        if (year < 1912) year += 1911
+        birthday = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+        foundPet = true
+      }
+      break
     }
   }
 
@@ -226,7 +247,7 @@ function parsePetFromText(raw: string) {
   }
 
   if (!foundPet) return null
-  return { name, species, breed }
+  return { name, species, breed, birthday }
 }
 
 // Compress image using canvas before upload to avoid 413 errors.
@@ -356,7 +377,7 @@ export default function NewCustomerPage() {
       const parsed = parseCustomerText(text)
       setForm({ name: parsed.name, phone: parsed.phone, lineId: parsed.lineId, idNumber: parsed.idNumber, address: parsed.address, notes: parsed.notes })
       const pet = parsePetFromText(text)
-      if (pet) setPetForm((f) => ({ ...f, name: pet.name, species: pet.species, breed: pet.breed }))
+      if (pet) setPetForm((f) => ({ ...f, name: pet.name, species: pet.species, breed: pet.breed, birthday: pet.birthday }))
       setScanProgress(100); setScanDone(true)
     } catch (err: unknown) {
       setScanError(err instanceof Error ? err.message : "辨識失敗，請重試")

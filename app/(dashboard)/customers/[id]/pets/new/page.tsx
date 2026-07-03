@@ -44,7 +44,7 @@ const CAT_BREEDS = ["蘇格蘭折耳", "俄羅斯藍", "橘貓", "虎斑", "三�
 function parsePetText(raw: string) {
   const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
   const text = lines.join("\n")
-  let name = "", species = "犬", breed = "", chipNumber = ""
+  let name = "", species = "犬", breed = "", chipNumber = "", birthday = ""
 
   for (const line of lines) {
     if (/(?:寵物名稱?|名字|名稱|小名)\s*[:：]/.test(line)) {
@@ -67,6 +67,20 @@ function parsePetText(raw: string) {
     const m = text.match(/\b\d{15}\b/)
     if (m) chipNumber = m[0]
   }
+  for (const line of lines) {
+    if (/生日|出生日期|出生年月日/.test(line)) {
+      const rest = line.replace(/.*(?:生日|出生日期|出生年月日)\s*[:：]?\s*/, "").trim()
+      const m = rest.match(/(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/)
+      if (m) {
+        let year = parseInt(m[1])
+        const month = parseInt(m[2])
+        const day = parseInt(m[3])
+        if (year < 1912) year += 1911
+        birthday = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+      }
+      break
+    }
+  }
 
   if (/貓|喵/.test(text)) species = "貓"
   else if (/兔/.test(text)) species = "兔"
@@ -88,7 +102,7 @@ function parsePetText(raw: string) {
     }
   }
 
-  return { name, species, breed, chipNumber, notes: "" }
+  return { name, species, breed, chipNumber, birthday, notes: "" }
 }
 
 function ToggleChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
@@ -224,6 +238,7 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
         species: parsed.species,
         breed: parsed.breed || prev.breed,
         chipNumber: parsed.chipNumber || prev.chipNumber,
+        birthday: parsed.birthday || prev.birthday,
         notes: parsed.notes || prev.notes,
       }))
       setScanProgress(100); setScanDone(true)
