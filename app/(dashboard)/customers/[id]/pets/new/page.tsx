@@ -79,6 +79,7 @@ function parsePetText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
     if (birthdayRe.test(line)) {
       const rest = line.replace(birthdayStripRe, "").trim()
       const m = rest.match(/(\d{2,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/)
+        ?? rest.match(/(\d{2,4})年(\d{1,2})月(\d{1,2})日?/)
       if (m) {
         let year = parseInt(m[1])
         const month = parseInt(m[2])

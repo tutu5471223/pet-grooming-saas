@@ -13,5 +13,5 @@ export const DEFAULT_OCR_KEYWORDS: OcrKeywords = {
   notesKeys: ["第二聯絡人"],
   petNameKeys: ["寵物名稱", "名字", "小名"],
   breedKeys: ["品種"],
-  birthdayKeys: ["生日", "出生日期"],
+  birthdayKeys: ["生日", "出生日期", "出生年月日"],
 }
