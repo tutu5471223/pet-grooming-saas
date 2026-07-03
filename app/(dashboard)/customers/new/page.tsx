@@ -226,6 +226,7 @@ function parseCustomerText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) 
 }
 
 function parsePetFromText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
+  alert(`[OCR raw]\n${raw}`)
   const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
   const text = lines.join("\n")
   let name = "", species = "犬", breed = "", birthday = ""
