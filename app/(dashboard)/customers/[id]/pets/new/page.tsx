@@ -38,23 +38,57 @@ const EMPTY_FORM = {
   afterGroomHandle: "", consentPhotoRecord: false, consentPhotoSocial: false, consentSnack: false, snackAllergy: "",
 }
 
+const DOG_BREEDS = ["貴賓犬", "貴賓", "瑪爾濟斯", "馬爾他", "黃金獵犬", "黃金", "法國鬥牛", "拉布拉多", "雪納瑞", "薩摩耶", "哈士奇", "米格魯", "吉娃娃", "約克夏", "博美犬", "博美", "柴犬", "西施", "臘腸", "柯基", "米克斯", "混種", "法鬥", "比熊", "瑪爾", "柴"]
+const CAT_BREEDS = ["蘇格蘭折耳", "俄羅斯藍", "橘貓", "虎斑", "三花", "玳瑁", "緬因", "布偶", "暹羅", "英短", "美短", "波斯"]
+
 function parsePetText(raw: string) {
-  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean)
+  const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
+  const text = lines.join("\n")
   let name = "", species = "犬", breed = "", chipNumber = ""
-  const notesLines: string[] = []
+
   for (const line of lines) {
-    if (/名字|名稱|寵物名/.test(line)) { name = line.replace(/.*[:：]\s*/, "").trim(); continue }
-    if (/品種/.test(line)) { breed = line.replace(/品種\s*[:：]?\s*/, "").trim(); continue }
-    if (/貓/.test(line)) { species = "貓"; continue }
-    if (/犬|狗/.test(line)) { species = "犬"; continue }
+    if (/(?:寵物名稱?|名字|名稱|小名)\s*[:：]/.test(line)) {
+      name = line.replace(/.*[:：]\s*/, "").trim(); break
+    }
+  }
+  for (const line of lines) {
+    if (/品種/.test(line)) {
+      breed = line.replace(/品種\s*[:：]?\s*/, "").trim(); break
+    }
+  }
+  for (const line of lines) {
     if (/晶片/.test(line)) {
       const m = line.match(/\d{10,15}/)
-      chipNumber = m ? m[0] : line.replace(/晶片\s*號碼?\s*[:：]?\s*/, "").trim()
-      continue
+      chipNumber = m ? m[0] : line.replace(/晶片\s*(?:號碼?)?\s*[:：]?\s*/, "").trim()
+      break
     }
-    notesLines.push(line)
   }
-  return { name, species, breed, chipNumber, notes: notesLines.join("\n").trim() }
+  if (!chipNumber) {
+    const m = text.match(/\b\d{15}\b/)
+    if (m) chipNumber = m[0]
+  }
+
+  if (/貓|喵/.test(text)) species = "貓"
+  else if (/兔/.test(text)) species = "兔"
+  else if (/鳥|鸚鵡/.test(text)) species = "鳥"
+  else species = "犬"
+
+  if (breed) {
+    if (CAT_BREEDS.some((b) => breed.includes(b))) species = "貓"
+    else if (DOG_BREEDS.some((b) => breed.includes(b))) species = "犬"
+  }
+  if (!breed) {
+    for (const b of CAT_BREEDS) {
+      if (text.includes(b)) { breed = b; species = "貓"; break }
+    }
+    if (!breed) {
+      for (const b of DOG_BREEDS) {
+        if (text.includes(b)) { breed = b; species = "犬"; break }
+      }
+    }
+  }
+
+  return { name, species, breed, chipNumber, notes: "" }
 }
 
 function ToggleChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {

@@ -53,55 +53,176 @@ function IssueRow({ label, active, note, onToggle, onNote }: {
   )
 }
 
+const DOG_BREEDS = ["貴賓犬", "貴賓", "瑪爾濟斯", "馬爾他", "黃金獵犬", "黃金", "法國鬥牛", "拉布拉多", "雪納瑞", "薩摩耶", "哈士奇", "米格魯", "吉娃娃", "約克夏", "博美犬", "博美", "柴犬", "西施", "臘腸", "柯基", "米克斯", "混種", "法鬥", "比熊", "瑪爾", "柴"]
+const CAT_BREEDS = ["蘇格蘭折耳", "俄羅斯藍", "橘貓", "虎斑", "三花", "玳瑁", "緬因", "布偶", "暹羅", "英短", "美短", "波斯"]
+
 function parseCustomerText(raw: string) {
-  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean)
-  let name = "", phone = "", lineId = "", address = ""
+  const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
+  const text = lines.join("\n")
+  let name = "", phone = "", lineId = "", address = "", idNumber = "", notes = ""
 
-  for (const line of lines) {
-    const phoneMatch = line.match(/0\d{9}/)
-    if (phoneMatch) {
-      if (!phone) phone = phoneMatch[0]
-      continue
+  const phoneFromStr = (str: string): string => {
+    const d = str.replace(/[-\s　（()）.、,，]/g, "")
+    const m = d.match(/09\d{8}/) ?? d.match(/0[2-8]\d{7,8}/)
+    return m ? m[0] : ""
+  }
+
+  // ── Section detection: 第一/第二聯絡人 ──────────────────────────────────────
+  let firstIdx = -1, secondIdx = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (firstIdx < 0 && /第一聯絡人/.test(lines[i])) firstIdx = i
+    if (secondIdx < 0 && /第二聯絡人/.test(lines[i])) secondIdx = i
+  }
+
+  if (firstIdx >= 0) {
+    const end = secondIdx > firstIdx ? secondIdx : Math.min(firstIdx + 6, lines.length)
+    for (let i = firstIdx; i < end; i++) {
+      const line = lines[i]
+      if (!name) {
+        const m = line.match(/(?:姓名|飼主|主人|戶名|客戶名?)\s*[:：]\s*([一-龥]{2,5})/)
+        if (m) { name = m[1] }
+        else if (i === firstIdx) {
+          const rest = line.replace(/第一聯絡人\s*/, "")
+          const nm = rest.match(/^([一-龥]{2,5})[\s　]/)
+          if (nm) name = nm[1]
+        }
+      }
+      if (!phone) phone = phoneFromStr(line)
     }
-    if (/LINE/i.test(line)) {
-      lineId = line.replace(/LINE\s*(ID\s*)?[:：]?\s*/i, "").trim()
-      continue
-    }
-    if (/地址|縣|市|區|路|街|巷|弄|號/.test(line)) {
-      address = line.replace(/地址\s*[:：]?\s*/, "").trim()
-      continue
-    }
-    if (/姓名/.test(line)) {
-      name = line.replace(/姓名\s*[:：]?\s*/, "").trim()
+
+    if (secondIdx >= 0) {
+      const end2 = Math.min(secondIdx + 6, lines.length)
+      let s2name = "", s2phone = ""
+      for (let i = secondIdx; i < end2; i++) {
+        const line = lines[i]
+        if (!s2name) {
+          const m = line.match(/(?:姓名|飼主|主人|戶名|客戶名?)\s*[:：]\s*([一-龥]{2,5})/)
+          if (m) { s2name = m[1] }
+          else if (i === secondIdx) {
+            const rest = line.replace(/第二聯絡人\s*/, "")
+            const nm = rest.match(/^([一-龥]{2,5})[\s　]/)
+            if (nm) s2name = nm[1]
+          }
+        }
+        if (!s2phone) s2phone = phoneFromStr(line)
+      }
+      if (s2name || s2phone) {
+        notes = `第二聯絡人：${s2name}${s2phone ? " " + s2phone : ""}`
+      }
     }
   }
 
+  // ── Fallback name ─────────────────────────────────────────────────────────
   if (!name) {
-    const nameLine = lines.find((l) => l.length >= 2 && l.length <= 6 && !/\d/.test(l) && !/LINE/i.test(l))
-    if (nameLine) name = nameLine
+    for (const line of lines) {
+      const m = line.match(/(?:姓名|飼主|主人|戶名|客戶名?)\s*[:：]?\s*([一-龥]{2,5})/)
+      if (m) { name = m[1]; break }
+    }
+  }
+  if (!name) {
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (/^(?:姓名|飼主|主人)\s*[:：]?\s*$/.test(lines[i])) {
+        const next = lines[i + 1]
+        if (/^[一-龥]{2,5}$/.test(next)) { name = next; break }
+      }
+    }
+  }
+  if (!name) {
+    const skipRe = /電話|地址|LINE|晶片|品種|物種|日期|備註|寵物|美容|姓名|飼主|主人|性別|生日|縣|市|區|路|街|聯絡人/
+    for (const line of lines) {
+      if (/^[一-龥]{2,4}$/.test(line) && !skipRe.test(line)) { name = line; break }
+    }
   }
 
-  return { name, phone, lineId, address }
+  // ── Fallback phone ────────────────────────────────────────────────────────
+  if (!phone) {
+    const limit = secondIdx > 0 ? secondIdx : lines.length
+    for (let i = 0; i < limit; i++) {
+      const p = phoneFromStr(lines[i])
+      if (p) { phone = p; break }
+    }
+    if (!phone) {
+      for (const line of lines) {
+        const p = phoneFromStr(line)
+        if (p) { phone = p; break }
+      }
+    }
+  }
+
+  // ── LINE ID ──────────────────────────────────────────────────────────────
+  for (let i = 0; i < lines.length; i++) {
+    if (/LINE/i.test(lines[i])) {
+      const after = lines[i].replace(/^.*LINE\s*(?:ID\s*)?[:：＝]?\s*/i, "").trim()
+      if (after) lineId = after
+      else if (i + 1 < lines.length) lineId = lines[i + 1]
+      break
+    }
+  }
+
+  // ── Taiwan ID ─────────────────────────────────────────────────────────────
+  const idMatch = text.match(/[A-Z][12]\d{8}/)
+  if (idMatch) idNumber = idMatch[0]
+
+  // ── Address ───────────────────────────────────────────────────────────────
+  for (const line of lines) {
+    if (!address) {
+      const clean = line.replace(/^地址\s*[:：]?\s*/, "").trim()
+      if (/[縣市][^，。]{1,}[路街巷道]/.test(clean) || /[區鄉鎮][^，。]{1,}[路街]/.test(clean)) {
+        address = clean
+      }
+    }
+  }
+  if (!address) {
+    for (const line of lines) {
+      if (/[路街巷][^\n]*\d+號/.test(line)) {
+        address = line.replace(/^地址\s*[:：]?\s*/, "").trim(); break
+      }
+    }
+  }
+  if (!address) {
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (/^地址\s*[:：]?\s*$/.test(lines[i])) { address = lines[i + 1]; break }
+    }
+  }
+
+  return { name, phone, lineId, address, idNumber, notes }
 }
 
 function parsePetFromText(raw: string) {
-  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean)
+  const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
+  const text = lines.join("\n")
   let name = "", species = "犬", breed = ""
   let foundPet = false
 
   for (const line of lines) {
-    if (/名字|名稱|寵物名/.test(line)) {
-      name = line.replace(/.*[:：]\s*/, "").trim()
-      foundPet = true
-      continue
+    if (/(?:寵物名稱?|名字|名稱|小名)\s*[:：]/.test(line)) {
+      name = line.replace(/.*[:：]\s*/, "").trim(); foundPet = true; break
     }
+  }
+  for (const line of lines) {
     if (/品種/.test(line)) {
-      breed = line.replace(/品種\s*[:：]?\s*/, "").trim()
-      foundPet = true
-      continue
+      breed = line.replace(/品種\s*[:：]?\s*/, "").trim(); foundPet = true; break
     }
-    if (/貓/.test(line)) { species = "貓"; foundPet = true; continue }
-    if (/犬|狗/.test(line)) { species = "犬"; foundPet = true; continue }
+  }
+
+  if (/貓|喵/.test(text)) { species = "貓"; foundPet = true }
+  else if (/兔/.test(text)) { species = "兔"; foundPet = true }
+  else if (/鳥|鸚鵡/.test(text)) { species = "鳥"; foundPet = true }
+  else if (/犬|狗/.test(text)) { species = "犬"; foundPet = true }
+
+  if (breed) {
+    if (CAT_BREEDS.some((b) => breed.includes(b))) species = "貓"
+    else if (DOG_BREEDS.some((b) => breed.includes(b))) species = "犬"
+  }
+  if (!breed) {
+    for (const b of CAT_BREEDS) {
+      if (text.includes(b)) { breed = b; species = "貓"; foundPet = true; break }
+    }
+    if (!breed) {
+      for (const b of DOG_BREEDS) {
+        if (text.includes(b)) { breed = b; species = "犬"; foundPet = true; break }
+      }
+    }
   }
 
   if (!foundPet) return null
@@ -233,7 +354,7 @@ export default function NewCustomerPage() {
       }
       const { text } = await res.json() as { text: string }
       const parsed = parseCustomerText(text)
-      setForm({ name: parsed.name, phone: parsed.phone, lineId: parsed.lineId, idNumber: "", address: parsed.address, notes: "" })
+      setForm({ name: parsed.name, phone: parsed.phone, lineId: parsed.lineId, idNumber: parsed.idNumber, address: parsed.address, notes: parsed.notes })
       const pet = parsePetFromText(text)
       if (pet) setPetForm((f) => ({ ...f, name: pet.name, species: pet.species, breed: pet.breed }))
       setScanProgress(100); setScanDone(true)
