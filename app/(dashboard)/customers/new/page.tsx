@@ -264,11 +264,13 @@ function parsePetFromText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
       break
     }
   }
+  alert(`[OCR 所有行]\n${lines.map((l, i) => `${i}: ${l}`).join("\n")}`)
   for (let i = 0; i < lines.length; i++) {
     if (birthdayRe.test(lines[i])) {
       const sameLineRest = lines[i].replace(birthdayStripRe, "").trim()
       const candidates = sameLineRest ? [sameLineRest] : []
       if (i + 1 < lines.length) candidates.push(lines[i + 1])
+      alert(`[OCR 生日關鍵字]\n行號：${i}\n內容：${lines[i]}\n同行剩餘：${sameLineRest}\n下一行：${lines[i + 1] ?? "(無)"}`)
       for (const c of candidates) {
         const d = parseDateStr(c)
         if (d) { birthday = d; foundPet = true; break }
@@ -276,6 +278,8 @@ function parsePetFromText(raw: string, kw: OcrKeywords = DEFAULT_OCR_KEYWORDS) {
       break
     }
   }
+  alert(`[OCR 生日結果] birthday = "${birthday}"`)
+
 
   if (/貓|喵/.test(text)) { species = "貓"; foundPet = true }
   else if (/兔/.test(text)) { species = "兔"; foundPet = true }
