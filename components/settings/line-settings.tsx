@@ -122,6 +122,7 @@ export function LineSettings({
               onChange={(e) => setChannelId(e.target.value)}
               className="font-mono text-sm"
             />
+            <p className="text-xs text-gray-500">Channel ID 可在 LINE Developers Console → 選擇您的 Channel → Basic settings 頁面找到，或直接查看網址列中的數字。</p>
           </div>
 
           <div className="space-y-1.5">
