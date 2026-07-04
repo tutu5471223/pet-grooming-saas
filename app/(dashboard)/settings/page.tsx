@@ -61,7 +61,7 @@ export default async function SettingsPage() {
   const { shop, services, rooms, memberLevels, monthlyPlans, staff } = await getSettingsData(shopId)
   const hdrs = await headers()
   const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "localhost:3000"
-  const proto = hdrs.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https")
+  const proto = host.startsWith("localhost") ? "http" : "https"
   const baseUrl = `${proto}://${host}`
 
   const staffForClient = staff.map((s) => ({
