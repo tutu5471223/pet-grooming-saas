@@ -11,6 +11,14 @@ declare module "next-auth" {
       shopName: string
       shopStatus?: string
       isSuperAdmin: boolean
+      permissions?: {
+        reports?: boolean
+        expenses?: boolean
+        void?: boolean
+        refund?: boolean
+        settings?: boolean
+        staff?: boolean
+      } | null
     }
   }
   interface User {
@@ -19,6 +27,7 @@ declare module "next-auth" {
     shopName: string
     shopStatus?: string
     isSuperAdmin?: boolean
+    permissions?: object | null
   }
 }
 
@@ -30,5 +39,6 @@ declare module "next-auth/jwt" {
     shopName?: string
     shopStatus?: string
     isSuperAdmin?: boolean
+    permissions?: object | null
   }
 }

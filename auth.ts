@@ -32,7 +32,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const user = await prisma.user.findFirst({
           where: { email, shopId, isActive: true },
-          include: { shop: true },
+          select: {
+            id: true, name: true, email: true, password: true,
+            role: true, shopId: true, isSuperAdmin: true, permissions: true,
+            shop: { select: { name: true, status: true } },
+          },
         })
 
         if (!user || !user.password) {
@@ -53,6 +57,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           shopName: user.shop.name,
           shopStatus: user.shop.status,
           isSuperAdmin: user.isSuperAdmin,
+          permissions: user.permissions as object | null,
         }
       },
     }),
@@ -67,6 +72,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.shopName = user.shopName
         token.shopStatus = user.shopStatus
         token.isSuperAdmin = user.isSuperAdmin ?? false
+        token.permissions = user.permissions ?? null
         return token
       }
 
@@ -80,6 +86,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             isActive: true,
             role: true,
             isSuperAdmin: true,
+            permissions: true,
             shop: { select: { name: true, status: true } },
           },
         })
@@ -100,6 +107,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.shopName = dbUser.shop?.name
         token.shopStatus = dbUser.shop?.status
         token.isSuperAdmin = dbUser.isSuperAdmin
+        token.permissions = dbUser.permissions ?? null
       }
       return token
     },
@@ -112,6 +120,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.shopStatus = token.shopStatus as string | undefined
         // Strict boolean: only an explicit `true` claim grants superadmin.
         session.user.isSuperAdmin = token.isSuperAdmin === true
+        session.user.permissions = (token.permissions as typeof session.user.permissions) ?? null
       }
       return session
     },

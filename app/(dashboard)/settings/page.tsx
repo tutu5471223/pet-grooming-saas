@@ -1,5 +1,6 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
+import { parsePermissions } from "@/lib/permissions"
 import { Lock } from "lucide-react"
 import { prisma } from "@/lib/prisma"
 import { headers } from "next/headers"
@@ -36,7 +37,7 @@ async function getSettingsData(shopId: string) {
     prisma.monthlyPlan.findMany({ where: { shopId, isActive: true } }),
     prisma.user.findMany({
       where: { shopId },
-      select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true, permissions: true },
       orderBy: { createdAt: "asc" },
     }),
   ])
@@ -49,7 +50,8 @@ export default async function SettingsPage() {
   const shopId = session.user.shopId
   const currentUserId = session.user.id
   const isAdmin = session.user.role === "OWNER"
-  if (!isAdmin) redirect("/dashboard")
+  const permissions = parsePermissions(session.user.permissions)
+  if (!isAdmin && !permissions.settings && !permissions.staff) redirect("/dashboard")
   const { shop, services, rooms, memberLevels, monthlyPlans, staff } = await getSettingsData(shopId)
   const hdrs = await headers()
   const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "localhost:3000"
@@ -59,6 +61,7 @@ export default async function SettingsPage() {
   const staffForClient = staff.map((s) => ({
     ...s,
     createdAt: s.createdAt.toISOString(),
+    permissions: (s.permissions ?? null) as import("@/lib/permissions").StaffPermissions | null,
   }))
 
   return (

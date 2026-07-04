@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { writeAudit } from "@/lib/audit"
-import { requireRole } from "@/lib/auth-guard"
+import { requireRole, requirePermission } from "@/lib/auth-guard"
 import { readJson, z } from "@/lib/validation"
 
 const patchSchema = z.object({
@@ -12,16 +12,21 @@ const patchSchema = z.object({
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  // Status-changing PATCH (esp. PENDING -> PAID) is a financial action: OWNER only.
-  const guard = await requireRole(["OWNER"])
+  // Parse body first to determine the operation, then apply the correct guard.
+  const parsed = await readJson(req, patchSchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
+
+  // Void requires OWNER role OR the "void" permission.
+  // All other status-changing ops (PENDING->PAID, notes updates) remain OWNER-only.
+  const isVoidRequest = body.status === "VOIDED"
+  const guard = isVoidRequest
+    ? await requirePermission("void")
+    : await requireRole(["OWNER"])
   if (!guard.ok) return guard.response
   const { shopId, userId } = guard.ctx
 
   const { id } = await params
-
-  const parsed = await readJson(req, patchSchema)
-  if (!parsed.ok) return parsed.response
-  const body = parsed.data
 
   const markingPaid = body.status === "PAID"
   const markingVoided = body.status === "VOIDED"

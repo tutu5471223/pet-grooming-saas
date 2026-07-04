@@ -1,5 +1,6 @@
 import { auth } from "@/auth"
 import { NextResponse } from "next/server"
+import { parsePermissions, hasPermission, type StaffPermissions } from "@/lib/permissions"
 
 export interface AuthContext {
   userId: string
@@ -7,6 +8,7 @@ export interface AuthContext {
   role: string
   isSuperAdmin: boolean
   shopStatus: string
+  permissions: StaffPermissions
 }
 
 type GuardResult =
@@ -50,8 +52,26 @@ export async function requireAuth(): Promise<GuardResult> {
       role: session.user.role,
       isSuperAdmin,
       shopStatus,
+      permissions: parsePermissions(session.user.permissions),
     },
   }
+}
+
+/**
+ * Like requireAuth() but also checks a specific permission.
+ * OWNER role always passes. STAFF must have the permission flag set to true.
+ */
+export async function requirePermission(perm: keyof StaffPermissions): Promise<GuardResult> {
+  const result = await requireAuth()
+  if (!result.ok) return result
+
+  if (!hasPermission(result.ctx.role, result.ctx.permissions, perm)) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    }
+  }
+  return result
 }
 
 /**

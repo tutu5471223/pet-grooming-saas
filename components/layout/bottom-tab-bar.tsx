@@ -12,22 +12,30 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useSession } from "next-auth/react"
+import { parsePermissions } from "@/lib/permissions"
 
 const tabs = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "儀表板", ownerOnly: false },
-  { href: "/customers", icon: Users, label: "客人", ownerOnly: false },
-  { href: "/appointments", icon: Calendar, label: "預約", ownerOnly: false },
-  { href: "/reports", icon: BarChart3, label: "報表", ownerOnly: true },
-  { href: "/products", icon: Package, label: "商品", ownerOnly: false },
-  { href: "/settings", icon: Settings, label: "設定", ownerOnly: true },
+  { href: "/dashboard", icon: LayoutDashboard, label: "儀表板", ownerOnly: false, permKey: undefined as string | undefined },
+  { href: "/customers", icon: Users, label: "客人", ownerOnly: false, permKey: undefined as string | undefined },
+  { href: "/appointments", icon: Calendar, label: "預約", ownerOnly: false, permKey: undefined as string | undefined },
+  { href: "/reports", icon: BarChart3, label: "報表", ownerOnly: true, permKey: "reports" as string | undefined },
+  { href: "/products", icon: Package, label: "商品", ownerOnly: false, permKey: undefined as string | undefined },
+  { href: "/settings", icon: Settings, label: "設定", ownerOnly: true, permKey: "settings" as string | undefined },
 ]
 
 export function BottomTabBar() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const isOwner = session?.user?.role === "OWNER"
+  const perms = parsePermissions(session?.user?.permissions)
 
-  const visibleTabs = tabs.filter((tab) => !tab.ownerOnly || isOwner)
+  const visibleTabs = tabs.filter((tab) => {
+    if (!tab.ownerOnly) return true
+    if (isOwner) return true
+    if (tab.permKey === "settings") return perms.settings || perms.staff
+    if (tab.permKey) return !!(perms as Record<string, boolean | undefined>)[tab.permKey]
+    return false
+  })
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-stretch border-t border-gray-200 bg-white sm:hidden">

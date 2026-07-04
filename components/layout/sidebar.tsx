@@ -23,17 +23,26 @@ import { signOut, useSession } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { useState, useEffect } from "react"
 import { NotificationBell } from "@/components/layout/notification-bell"
+import { parsePermissions } from "@/lib/permissions"
 
-const navItems = [
+type NavItem = {
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  ownerOnly: boolean
+  permKey?: "reports" | "expenses" | "settings" | "staff"
+}
+
+const navItems: NavItem[] = [
   { href: "/dashboard", icon: LayoutDashboard, label: "儀表板", ownerOnly: false },
   { href: "/customers", icon: Users, label: "客人管理", ownerOnly: false },
   { href: "/appointments", icon: Calendar, label: "預約排程", ownerOnly: false },
   { href: "/boarding", icon: Home, label: "住宿管理", ownerOnly: false },
-  { href: "/reports", icon: BarChart3, label: "營收報表", ownerOnly: true },
-  { href: "/expenses", icon: TrendingDown, label: "支出管理", ownerOnly: true },
+  { href: "/reports", icon: BarChart3, label: "營收報表", ownerOnly: true, permKey: "reports" },
+  { href: "/expenses", icon: TrendingDown, label: "支出管理", ownerOnly: true, permKey: "expenses" },
   { href: "/products", icon: Package, label: "商品管理", ownerOnly: false },
   { href: "/sales", icon: ShoppingBag, label: "銷售紀錄", ownerOnly: false },
-  { href: "/settings", icon: Settings, label: "系統設定", ownerOnly: true },
+  { href: "/settings", icon: Settings, label: "系統設定", ownerOnly: true, permKey: "settings" },
   { href: "/audit-logs", icon: ClipboardList, label: "操作記錄", ownerOnly: true },
 ]
 
@@ -41,6 +50,8 @@ export function Sidebar() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const [collapsed, setCollapsed] = useState(false)
+  const isOwner = session?.user?.role === "OWNER"
+  const perms = parsePermissions(session?.user?.permissions)
 
   // Auto-collapse on mobile
   useEffect(() => {
@@ -75,7 +86,11 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
         {navItems.map((item) => {
-          if (item.ownerOnly && session?.user?.role !== "OWNER") return null
+          if (item.ownerOnly && !isOwner) {
+            // Allow if user has the matching permission
+            const allowed = item.permKey && (perms[item.permKey] || (item.permKey === "settings" && perms.staff))
+            if (!allowed) return null
+          }
           const active = pathname === item.href || pathname.startsWith(item.href + "/")
           return (
             <Link

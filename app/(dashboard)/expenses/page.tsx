@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import { parsePermissions } from "@/lib/permissions"
 import { format, parseISO, subMonths, addMonths } from "date-fns"
 import {
   Plus,
@@ -79,12 +80,17 @@ export default function ExpensesPage() {
   useEffect(() => { loadExpenses() }, [month])
 
   useEffect(() => {
-    if (status === "authenticated" && session?.user?.role !== "OWNER") {
-      router.replace("/dashboard")
+    if (status === "authenticated") {
+      const isOwner = session?.user?.role === "OWNER"
+      const perms = parsePermissions(session?.user?.permissions)
+      if (!isOwner && !perms.expenses) router.replace("/dashboard")
     }
   }, [status, session, router])
 
-  if (status === "loading" || (status === "authenticated" && session?.user?.role !== "OWNER")) {
+  if (status === "loading") return <div className="p-6 text-gray-500">載入中...</div>
+  const isOwner = session?.user?.role === "OWNER"
+  const perms = parsePermissions(session?.user?.permissions)
+  if (status === "authenticated" && !isOwner && !perms.expenses) {
     return <div className="p-6 text-gray-500">載入中...</div>
   }
 

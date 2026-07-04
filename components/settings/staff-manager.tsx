@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, UserCheck, UserX } from "lucide-react"
+import { Plus, UserCheck, UserX, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatDate } from "@/lib/utils"
+import { PERMISSION_LIST, type StaffPermissions } from "@/lib/permissions"
 
 interface Staff {
   id: string
@@ -29,6 +30,7 @@ interface Staff {
   role: string
   isActive: boolean
   createdAt: string
+  permissions: StaffPermissions | null
 }
 
 interface StaffManagerProps {
@@ -54,6 +56,10 @@ export function StaffManager({ initialStaff, currentUserId, isAdmin }: StaffMana
   const [addError, setAddError] = useState("")
   const [toggleLoadingId, setToggleLoadingId] = useState<string | null>(null)
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "GROOMER" })
+  const [permStaff, setPermStaff] = useState<Staff | null>(null)
+  const [permForm, setPermForm] = useState<StaffPermissions>({})
+  const [permSaving, setPermSaving] = useState(false)
+  const [permError, setPermError] = useState("")
 
   function handleCloseAdd() {
     setShowAdd(false)
@@ -76,7 +82,7 @@ export function StaffManager({ initialStaff, currentUserId, isAdmin }: StaffMana
         throw new Error(data.error || "新增失敗")
       }
       const newStaff: Staff = await res.json()
-      setStaff([...staff, newStaff])
+      setStaff([...staff, { ...newStaff, permissions: null }])
       handleCloseAdd()
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : "新增失敗")
@@ -99,6 +105,36 @@ export function StaffManager({ initialStaff, currentUserId, isAdmin }: StaffMana
       alert(err instanceof Error ? err.message : "操作失敗")
     } finally {
       setToggleLoadingId(null)
+    }
+  }
+
+  function openPermissions(s: Staff) {
+    setPermStaff(s)
+    setPermForm(s.permissions ?? {})
+    setPermError("")
+  }
+
+  async function handleSavePermissions() {
+    if (!permStaff) return
+    setPermSaving(true)
+    setPermError("")
+    try {
+      const res = await fetch(`/api/staff/${permStaff.id}/permissions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(permForm),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "儲存失敗")
+      }
+      const { permissions } = await res.json()
+      setStaff(staff.map((s) => (s.id === permStaff.id ? { ...s, permissions } : s)))
+      setPermStaff(null)
+    } catch (err: unknown) {
+      setPermError(err instanceof Error ? err.message : "儲存失敗")
+    } finally {
+      setPermSaving(false)
     }
   }
 
@@ -159,33 +195,46 @@ export function StaffManager({ initialStaff, currentUserId, isAdmin }: StaffMana
                       </td>
                       {isAdmin && (
                         <td className="px-5 py-3 text-right">
-                          {s.id !== currentUserId && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={toggleLoadingId === s.id}
-                              onClick={() => handleToggle(s.id)}
-                              className={
-                                s.isActive
-                                  ? "text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  : "text-green-600 hover:text-green-700 hover:bg-green-50"
-                              }
-                            >
-                              {toggleLoadingId === s.id ? (
-                                "處理中..."
-                              ) : s.isActive ? (
-                                <>
-                                  <UserX className="h-4 w-4 mr-1" />
-                                  停用
-                                </>
-                              ) : (
-                                <>
-                                  <UserCheck className="h-4 w-4 mr-1" />
-                                  啟用
-                                </>
-                              )}
-                            </Button>
-                          )}
+                          <div className="flex items-center justify-end gap-2">
+                            {s.id !== currentUserId && s.role !== "OWNER" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openPermissions(s)}
+                                className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+                              >
+                                <ShieldCheck className="h-4 w-4 mr-1" />
+                                權限
+                              </Button>
+                            )}
+                            {s.id !== currentUserId && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={toggleLoadingId === s.id}
+                                onClick={() => handleToggle(s.id)}
+                                className={
+                                  s.isActive
+                                    ? "text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    : "text-green-600 hover:text-green-700 hover:bg-green-50"
+                                }
+                              >
+                                {toggleLoadingId === s.id ? (
+                                  "處理中..."
+                                ) : s.isActive ? (
+                                  <>
+                                    <UserX className="h-4 w-4 mr-1" />
+                                    停用
+                                  </>
+                                ) : (
+                                  <>
+                                    <UserCheck className="h-4 w-4 mr-1" />
+                                    啟用
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -197,6 +246,7 @@ export function StaffManager({ initialStaff, currentUserId, isAdmin }: StaffMana
         </CardContent>
       </Card>
 
+      {/* Add Staff Dialog */}
       <Dialog open={showAdd} onOpenChange={(v) => { if (!v) handleCloseAdd() }}>
         <DialogContent>
           <DialogHeader>
@@ -260,6 +310,40 @@ export function StaffManager({ initialStaff, currentUserId, isAdmin }: StaffMana
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Permissions Dialog */}
+      <Dialog open={!!permStaff} onOpenChange={(v) => { if (!v) setPermStaff(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>權限設定 — {permStaff?.name}</DialogTitle>
+            <DialogDescription>勾選要開放給此員工的功能權限，預設全部關閉。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            {PERMISSION_LIST.map(({ key, label }) => (
+              <label key={key} className="flex items-center gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={!!permForm[key]}
+                  onChange={(e) => setPermForm({ ...permForm, [key]: e.target.checked })}
+                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm text-gray-700 group-hover:text-gray-900">{label}</span>
+              </label>
+            ))}
+          </div>
+          {permError && (
+            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{permError}</p>
+          )}
+          <div className="flex gap-3 pt-2">
+            <Button onClick={handleSavePermissions} disabled={permSaving} className="flex-1">
+              {permSaving ? "儲存中..." : "儲存權限"}
+            </Button>
+            <Button variant="outline" onClick={() => setPermStaff(null)} disabled={permSaving}>
+              取消
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>

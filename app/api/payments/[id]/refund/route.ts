@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { writeAudit } from "@/lib/audit"
-import { requireRole } from "@/lib/auth-guard"
+import { requirePermission } from "@/lib/auth-guard"
 import { readJson, positiveMoney, shortText, z } from "@/lib/validation"
 import { round2 } from "@/lib/money"
 
@@ -12,7 +12,7 @@ const refundSchema = z.object({
 })
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const guard = await requireRole(["OWNER"])
+  const guard = await requirePermission("refund")
   if (!guard.ok) return guard.response
   const { shopId, userId } = guard.ctx
 

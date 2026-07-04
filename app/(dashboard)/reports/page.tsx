@@ -1,6 +1,7 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
+import { parsePermissions } from "@/lib/permissions"
 import {
   startOfMonth,
   endOfMonth,
@@ -383,7 +384,10 @@ export default async function ReportsPage({
 
   const shopId = session.user.shopId
   const isOwner = session.user.role === "OWNER" || session.user.isSuperAdmin === true
-  if (!isOwner) redirect("/dashboard")
+  const permissions = parsePermissions(session.user.permissions)
+  if (!isOwner && !permissions.reports) redirect("/dashboard")
+  const canVoid = isOwner || !!permissions.void
+  const canRefund = isOwner || !!permissions.refund
   const { month: monthParam, tab: tabParam, from: fromParam, to: toParam } = await searchParams
 
   let monthDate: Date
@@ -734,7 +738,7 @@ export default async function ReportsPage({
                         <th className="px-4 py-3 text-left font-medium text-gray-500">計費方式</th>
                         <th className="px-4 py-3 text-left font-medium text-gray-500">付款方式</th>
                         <th className="px-4 py-3 text-right font-medium text-gray-500">金額</th>
-                        {isOwner && <th className="px-4 py-3" />}
+                        {canRefund && <th className="px-4 py-3" />}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -762,7 +766,7 @@ export default async function ReportsPage({
                                 <p className="text-xs text-orange-500 mt-0.5">已退 {formatCurrency(row.refundedAmount)}</p>
                               )}
                             </td>
-                            {isOwner && (
+                            {canRefund && (
                               <td className="px-4 py-3">
                                 {row.isPayment && !fullyRefunded && (
                                   <RefundButton
@@ -781,7 +785,7 @@ export default async function ReportsPage({
                       <tr>
                         <td colSpan={6} className="px-4 py-3 text-sm font-semibold text-gray-700">淨收入合計（{incomeData.rows.length} 筆）</td>
                         <td className="px-4 py-3 text-right text-base font-bold text-indigo-700">{formatCurrency(incomeData.total)}</td>
-                        {isOwner && <td />}
+                        {canRefund && <td />}
                       </tr>
                     </tfoot>
                   </table>
@@ -980,7 +984,7 @@ export default async function ReportsPage({
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
                                 <CollectButton paymentId={p.id} amount={p.amount} />
-                                {isOwner && (
+                                {canVoid && (
                                   <VoidButton paymentId={p.id} amount={p.amount} customerName={customerName} />
                                 )}
                               </div>
