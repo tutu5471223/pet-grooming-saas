@@ -1,4 +1,5 @@
 import { auth } from "@/auth"
+import { redirect } from "next/navigation"
 import { Lock } from "lucide-react"
 import { prisma } from "@/lib/prisma"
 import { headers } from "next/headers"
@@ -44,9 +45,11 @@ async function getSettingsData(shopId: string) {
 
 export default async function SettingsPage() {
   const session = await auth()
-  const shopId = session!.user.shopId
-  const currentUserId = session!.user.id
-  const isAdmin = session!.user.role === "OWNER"
+  if (!session) redirect("/login")
+  const shopId = session.user.shopId
+  const currentUserId = session.user.id
+  const isAdmin = session.user.role === "OWNER"
+  if (!isAdmin) redirect("/dashboard")
   const { shop, services, rooms, memberLevels, monthlyPlans, staff } = await getSettingsData(shopId)
   const hdrs = await headers()
   const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "localhost:3000"

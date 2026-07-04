@@ -29,11 +29,11 @@ const navItems = [
   { href: "/customers", icon: Users, label: "客人管理", ownerOnly: false },
   { href: "/appointments", icon: Calendar, label: "預約排程", ownerOnly: false },
   { href: "/boarding", icon: Home, label: "住宿管理", ownerOnly: false },
-  { href: "/reports", icon: BarChart3, label: "營收報表", ownerOnly: false },
-  { href: "/expenses", icon: TrendingDown, label: "支出管理", ownerOnly: false },
+  { href: "/reports", icon: BarChart3, label: "營收報表", ownerOnly: true },
+  { href: "/expenses", icon: TrendingDown, label: "支出管理", ownerOnly: true },
   { href: "/products", icon: Package, label: "商品管理", ownerOnly: false },
   { href: "/sales", icon: ShoppingBag, label: "銷售紀錄", ownerOnly: false },
-  { href: "/settings", icon: Settings, label: "系統設定", ownerOnly: false },
+  { href: "/settings", icon: Settings, label: "系統設定", ownerOnly: true },
   { href: "/audit-logs", icon: ClipboardList, label: "操作記錄", ownerOnly: true },
 ]
 

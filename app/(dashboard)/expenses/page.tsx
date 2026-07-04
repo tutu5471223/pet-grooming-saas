@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { format, parseISO, subMonths, addMonths } from "date-fns"
 import {
   Plus,
@@ -51,6 +53,8 @@ function monthLabel(d: Date) {
 const EMPTY_FORM = { date: format(new Date(), "yyyy-MM-dd"), category: "耗材", description: "", amount: "" }
 
 export default function ExpensesPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
   const [month, setMonth] = useState(() => toMonthStr(new Date()))
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,6 +77,16 @@ export default function ExpensesPage() {
   }
 
   useEffect(() => { loadExpenses() }, [month])
+
+  useEffect(() => {
+    if (status === "authenticated" && session?.user?.role !== "OWNER") {
+      router.replace("/dashboard")
+    }
+  }, [status, session, router])
+
+  if (status === "loading" || (status === "authenticated" && session?.user?.role !== "OWNER")) {
+    return <div className="p-6 text-gray-500">載入中...</div>
+  }
 
   const total = expenses.reduce((s, e) => s + e.amount, 0)
 

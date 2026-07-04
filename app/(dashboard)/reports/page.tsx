@@ -383,6 +383,7 @@ export default async function ReportsPage({
 
   const shopId = session.user.shopId
   const isOwner = session.user.role === "OWNER" || session.user.isSuperAdmin === true
+  if (!isOwner) redirect("/dashboard")
   const { month: monthParam, tab: tabParam, from: fromParam, to: toParam } = await searchParams
 
   let monthDate: Date
