@@ -15,7 +15,13 @@ interface Notification {
   createdAt: string
 }
 
-export function NotificationBell({ collapsed }: { collapsed: boolean }) {
+export function NotificationBell({
+  collapsed,
+  placement = "sidebar",
+}: {
+  collapsed: boolean
+  placement?: "sidebar" | "mobile-top"
+}) {
   const router = useRouter()
   const [unreadCount, setUnreadCount] = useState(0)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -70,22 +76,39 @@ export function NotificationBell({ collapsed }: { collapsed: boolean }) {
   return (
     <>
       <div ref={ref} className="relative">
-        <button
-          onClick={handleOpen}
-          className="relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white transition-colors w-full"
-          title="通知"
-        >
-          <Bell className="h-5 w-5 shrink-0" />
-          {!collapsed && <span>通知</span>}
-          {unreadCount > 0 && (
-            <span className="absolute left-6 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          )}
-        </button>
+        {placement === "mobile-top" ? (
+          <button
+            onClick={handleOpen}
+            className="relative p-2 text-gray-400 hover:text-white transition-colors"
+            title="通知"
+          >
+            <Bell className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+        ) : (
+          <button
+            onClick={handleOpen}
+            className="relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white transition-colors w-full"
+            title="通知"
+          >
+            <Bell className="h-5 w-5 shrink-0" />
+            {!collapsed && <span>通知</span>}
+            {unreadCount > 0 && (
+              <span className="absolute left-6 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+        )}
 
         {open && (
-          <div className="absolute bottom-12 left-0 z-50 w-80 rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden">
+          <div className={`absolute z-50 w-72 rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden ${
+            placement === "mobile-top" ? "top-full right-0 mt-1" : "bottom-12 left-0 w-80"
+          }`}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
               <p className="text-sm font-semibold text-gray-900">通知</p>
               {notifications.some(n => !n.isRead) && (

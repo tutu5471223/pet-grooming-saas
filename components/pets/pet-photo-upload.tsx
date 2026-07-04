@@ -3,7 +3,6 @@
 import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Camera } from "lucide-react"
-import Image from "next/image"
 
 interface PetPhotoUploadProps {
   petId: string
@@ -67,7 +66,8 @@ export function PetPhotoUpload({ petId, photoUrl, petName }: PetPhotoUploadProps
       >
         {localUrl ? (
           <div className="relative h-24 w-24 rounded-full overflow-hidden border-2 border-white shadow-md">
-            <Image src={localUrl} alt={petName} fill className="object-cover" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={localUrl} alt={petName} className="h-full w-full object-cover" />
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
               <Camera className="h-6 w-6 text-white" />
             </div>

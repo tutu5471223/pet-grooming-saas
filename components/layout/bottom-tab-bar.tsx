@@ -6,7 +6,8 @@ import {
   LayoutDashboard,
   Users,
   Calendar,
-  Home,
+  BarChart3,
+  Package,
   Settings,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -15,7 +16,8 @@ const tabs = [
   { href: "/dashboard", icon: LayoutDashboard, label: "儀表板" },
   { href: "/customers", icon: Users, label: "客人" },
   { href: "/appointments", icon: Calendar, label: "預約" },
-  { href: "/boarding", icon: Home, label: "住宿" },
+  { href: "/reports", icon: BarChart3, label: "報表" },
+  { href: "/products", icon: Package, label: "商品" },
   { href: "/settings", icon: Settings, label: "設定" },
 ]
 
