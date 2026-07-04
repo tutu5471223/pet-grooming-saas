@@ -4,7 +4,6 @@ import { useState, use, useEffect, useRef, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Plus, Trash2, Camera, X, CalendarCheck } from "lucide-react"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -380,7 +379,8 @@ function NewGroomingPageContent({
                     />
                     {url ? (
                       <div className="relative rounded-xl overflow-hidden aspect-square border border-gray-200">
-                        <Image src={url} alt={slot} fill className="object-cover" />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt={slot} className="h-full w-full object-cover" />
                         <button
                           type="button"
                           onClick={() => slot === "before" ? setBeforePhotoUrl(null) : setAfterPhotoUrl(null)}

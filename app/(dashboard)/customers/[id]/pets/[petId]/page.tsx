@@ -493,6 +493,23 @@ export default async function PetDetailPage({
                         </div>
                       )}
 
+                      {(record.beforePhotoUrl || record.afterPhotoUrl) && (
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          {(["before", "after"] as const).map((slot) => {
+                            const photoUrl = slot === "before" ? record.beforePhotoUrl : record.afterPhotoUrl
+                            if (!photoUrl) return null
+                            return (
+                              <div key={slot} className="space-y-1">
+                                <p className="text-xs text-gray-400">{slot === "before" ? "美容前" : "美容後"}</p>
+                                <div className="aspect-square rounded-lg overflow-hidden border border-gray-200">
+                                  <img src={photoUrl} alt={slot === "before" ? "美容前" : "美容後"} className="h-full w-full object-cover" />
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
                       {/* P2-5: 編輯/刪除按鈕 */}
                       <GroomingRecordActions
                         record={{
