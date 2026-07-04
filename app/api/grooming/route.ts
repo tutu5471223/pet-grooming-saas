@@ -101,18 +101,44 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      // Create a PENDING payment — collected separately via receivables
-      await tx.payment.create({
-        data: {
-          shopId,
-          customerId: pet.customerId,
-          petId: pet.id,
-          groomingRecordId: groomingRecord.id,
-          amount: totalCost,
-          status: "PENDING",
-          notes: body.paymentNotes || null,
-        },
+      // Check for an active monthly plan — if found, deduct a session instead of billing
+      const now = new Date()
+      const candidatePlans = await tx.petMonthlyPlan.findMany({
+        where: { petId: body.petId, shopId, startDate: { lte: now } },
+        orderBy: { startDate: "desc" },
       })
+      const activePlan = candidatePlans.find((p) => {
+        if (p.usedSessions >= p.maxSessions) return false
+        if (now <= p.endDate) return true
+        if (p.expiryPolicy === "PERMANENT") return true
+        if (p.expiryPolicy === "GRACE_PERIOD") {
+          const graceEnd = new Date(p.endDate)
+          graceEnd.setDate(graceEnd.getDate() + (p.graceDays ?? 7))
+          return now <= graceEnd
+        }
+        return false
+      }) ?? null
+
+      if (activePlan) {
+        // Monthly plan: deduct one session, no new payment (already paid upfront)
+        await tx.petMonthlyPlan.update({
+          where: { id: activePlan.id },
+          data: { usedSessions: { increment: 1 } },
+        })
+      } else {
+        // No active plan: create a PENDING payment collected via receivables
+        await tx.payment.create({
+          data: {
+            shopId,
+            customerId: pet.customerId,
+            petId: pet.id,
+            groomingRecordId: groomingRecord.id,
+            amount: totalCost,
+            status: "PENDING",
+            notes: body.paymentNotes || null,
+          },
+        })
+      }
 
       if (appointmentId) {
         await tx.appointment.updateMany({
