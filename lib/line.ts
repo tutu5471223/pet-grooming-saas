@@ -2,8 +2,12 @@ import { createHmac } from "crypto"
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"]
 
-export function verifyLineSignature(rawBody: string, signature: string): boolean {
-  const secret = process.env.LINE_CHANNEL_SECRET
+export function verifyLineSignature(
+  rawBody: string,
+  signature: string,
+  channelSecret?: string | null
+): boolean {
+  const secret = channelSecret ?? process.env.LINE_CHANNEL_SECRET
   if (!secret) return false
   const expected = createHmac("sha256", secret).update(rawBody).digest("base64")
   return expected === signature

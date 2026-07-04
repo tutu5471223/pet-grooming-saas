@@ -20,6 +20,8 @@ const shopUpdateSchema = z.object({
   restDays: z.array(z.union([z.number(), z.string()])).optional(),
   reminderTemplate: longText.optional().nullable(),
   contractTemplate: longText.optional().nullable(),
+  lineChannelId: shortText.optional().nullable(),
+  lineChannelSecret: shortText.max(1000).optional().nullable(),
   lineChannelToken: shortText.max(1000).optional().nullable(),
   ocrKeywords: longText.optional().nullable(),
 })
@@ -60,6 +62,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         restDays: body.restDays !== undefined ? JSON.stringify(body.restDays) : undefined,
         reminderTemplate: body.reminderTemplate ?? undefined,
         contractTemplate,
+        lineChannelId:
+          body.lineChannelId !== undefined ? (body.lineChannelId ?? null) : undefined,
+        lineChannelSecret:
+          body.lineChannelSecret !== undefined ? (body.lineChannelSecret ?? null) : undefined,
         lineChannelToken:
           body.lineChannelToken !== undefined ? (body.lineChannelToken ?? null) : undefined,
         ocrKeywords:

@@ -30,7 +30,13 @@ function AccessDeniedTab() {
 
 async function getSettingsData(shopId: string) {
   const [shop, services, rooms, memberLevels, monthlyPlans, staff] = await Promise.all([
-    prisma.shop.findUnique({ where: { id: shopId } }),
+    prisma.shop.findUnique({ where: { id: shopId }, select: {
+      id: true, name: true, phone: true, address: true, email: true,
+      contractTemplate: true, logoUrl: true, businessHoursStart: true,
+      businessHoursEnd: true, restDays: true, reminderTemplate: true,
+      lineChannelToken: true, lineChannelId: true, lineChannelSecret: true,
+      ocrKeywords: true, status: true, onboardingDone: true,
+    }}),
     prisma.service.findMany({ where: { shopId }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
     prisma.boardingRoom.findMany({ where: { shopId }, orderBy: { name: "asc" } }),
     prisma.memberLevel.findMany({ where: { shopId }, orderBy: { minPoints: "asc" } }),
@@ -157,7 +163,9 @@ export default async function SettingsPage() {
           {isAdmin ? (
             <LineSettings
               shopId={shopId}
-              webhookUrl={`${baseUrl}/api/line/webhook`}
+              webhookUrl={`${baseUrl}/api/line/webhook/${shopId}`}
+              initialChannelId={shop?.lineChannelId ?? null}
+              initialChannelSecret={shop?.lineChannelSecret ?? null}
               initialToken={shop?.lineChannelToken ?? null}
             />
           ) : <AccessDeniedTab />}

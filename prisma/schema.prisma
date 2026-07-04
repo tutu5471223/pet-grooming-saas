@@ -26,6 +26,8 @@ model Shop {
   businessHoursEnd   String?
   restDays           String?
   reminderTemplate   String?
+  lineChannelId      String?
+  lineChannelSecret  String?
   lineChannelToken   String?
   ocrKeywords        String?
   status             String   @default("ACTIVE")
