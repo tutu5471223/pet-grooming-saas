@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 import SignatureCanvas from "react-signature-canvas"
 import { CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,22 @@ interface GroomingConfirmationProps {
 
 export function GroomingConfirmation({ groomingId, viewToken, confirmedAt, signatureUrl }: GroomingConfirmationProps) {
   const sigRef = useRef<SignatureCanvas>(null)
+  const sigContainerRef = useRef<HTMLDivElement>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    function resize() {
+      const canvas = sigRef.current?.getCanvas()
+      const container = sigContainerRef.current
+      if (!canvas || !container) return
+      canvas.width = container.offsetWidth
+      canvas.height = container.offsetHeight
+      sigRef.current?.clear()
+    }
+    resize()
+    window.addEventListener("resize", resize)
+    return () => window.removeEventListener("resize", resize)
+  }, [])
   const [confirmed, setConfirmed] = useState<string | null>(confirmedAt)
   const [savedSignature, setSavedSignature] = useState<string | null>(signatureUrl ?? null)
   const [error, setError] = useState("")
@@ -80,15 +95,11 @@ export function GroomingConfirmation({ groomingId, viewToken, confirmedAt, signa
         <p className="text-xs text-gray-500">請在下方空白區域簽名，確認已收到寵物並了解本次美容狀況</p>
       </div>
 
-      <div className="rounded-xl border border-gray-300 bg-gray-50 overflow-hidden">
+      <div ref={sigContainerRef} className="rounded-xl border border-gray-300 bg-gray-50 overflow-hidden" style={{ height: "160px" }}>
         <SignatureCanvas
           ref={sigRef}
           penColor="#1a1a1a"
-          canvasProps={{
-            width: 600,
-            height: 200,
-            style: { width: "100%", height: "160px", touchAction: "none", display: "block" },
-          }}
+          canvasProps={{ className: "w-full h-full touch-none block" }}
         />
       </div>
 

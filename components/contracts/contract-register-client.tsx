@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 import SignatureCanvas from "react-signature-canvas"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -82,6 +82,21 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
   const sigRef = useRef<SignatureCanvas>(null)
+  const sigContainerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function resize() {
+      const canvas = sigRef.current?.getCanvas()
+      const container = sigContainerRef.current
+      if (!canvas || !container) return
+      canvas.width = container.offsetWidth
+      canvas.height = container.offsetHeight
+      sigRef.current?.clear()
+    }
+    resize()
+    window.addEventListener("resize", resize)
+    return () => window.removeEventListener("resize", resize)
+  }, [])
 
   function setField(k: keyof typeof form, v: string) {
     setForm((f) => ({ ...f, [k]: v }))
@@ -104,7 +119,9 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
   function validateStep1(): string {
     if (!form.name.trim()) return "請填寫姓名"
     if (!/^09\d{8}$/.test(form.phone)) return "手機號碼格式錯誤（09xxxxxxxx）"
+    if (!form.address.trim()) return "請填寫地址"
     if (!form.petName.trim()) return "請填寫寵物名稱"
+    if (!form.breed.trim()) return "請填寫寵物品種"
     return ""
   }
 
@@ -224,7 +241,7 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
                     onChange={(e) => setField("idNumber", e.target.value)} className="h-10" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="address" className="text-xs">地址（選填）</Label>
+                  <Label htmlFor="address" className="text-xs">地址 *</Label>
                   <Input id="address" placeholder="台北市..." value={form.address}
                     onChange={(e) => setField("address", e.target.value)} className="h-10" />
                 </div>
@@ -252,7 +269,7 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="breed" className="text-xs">品種（選填）</Label>
+                  <Label htmlFor="breed" className="text-xs">品種 *</Label>
                   <Input id="breed" placeholder="貴賓、柴犬..." value={form.breed}
                     onChange={(e) => setField("breed", e.target.value)} className="h-10" />
                 </div>
@@ -425,9 +442,9 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
                   <RotateCcw className="h-3 w-3" /> 清除
                 </button>
               </div>
-              <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 overflow-hidden">
+              <div ref={sigContainerRef} className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 overflow-hidden" style={{ height: "180px" }}>
                 <SignatureCanvas ref={sigRef} penColor="black"
-                  canvasProps={{ width: 560, height: 180, className: "w-full touch-none", style: { maxWidth: "100%", height: "180px" } }}
+                  canvasProps={{ className: "w-full h-full touch-none block" }}
                   onBegin={() => setHasSignature(true)} />
               </div>
               <p className="text-xs text-gray-400">請用手指（手機）或滑鼠（電腦）在上方框內簽名</p>

@@ -11,7 +11,7 @@ const createCustomerSchema = z.object({
   phone: phone,
   lineId: z.string().trim().max(100).optional().nullable(),
   idNumber: shortText.optional().nullable(),
-  address: shortText.optional().nullable(),
+  address: shortText.min(1),
   notes: z.string().trim().max(2000).optional().nullable(),
 })
 

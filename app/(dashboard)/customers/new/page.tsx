@@ -454,6 +454,16 @@ export default function NewCustomerPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true); setError("")
+    if (!form.address.trim()) {
+      setError("請填寫客人地址")
+      setLoading(false)
+      return
+    }
+    if (petForm.name.trim() && !petForm.breed.trim()) {
+      setError("請填寫寵物品種")
+      setLoading(false)
+      return
+    }
     try {
       const res = await fetch("/api/customers", {
         method: "POST",
@@ -607,9 +617,9 @@ export default function NewCustomerPage() {
                   onChange={(e) => setForm({ ...form, idNumber: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="address">地址</Label>
-                <Input id="address" placeholder="客人地址（選填）" value={form.address}
-                  onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                <Label htmlFor="address">地址 *</Label>
+                <Input id="address" placeholder="客人地址" value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })} required />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -651,8 +661,8 @@ export default function NewCustomerPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="petBreed">品種</Label>
-                <Input id="petBreed" placeholder="馬爾濟斯、柴犬...（選填）" value={petForm.breed}
+                <Label htmlFor="petBreed">品種 *</Label>
+                <Input id="petBreed" placeholder="馬爾濟斯、柴犬..." value={petForm.breed}
                   onChange={(e) => setPet("breed", e.target.value)} />
               </div>
               <div className="space-y-1.5">

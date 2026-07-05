@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 import SignatureCanvas from "react-signature-canvas"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,7 +17,22 @@ export function ContractSigner({
   customerName: string
 }) {
   const sigRef = useRef<SignatureCanvas>(null)
+  const sigContainerRef = useRef<HTMLDivElement>(null)
   const [signerName, setSignerName] = useState(customerName)
+
+  useEffect(() => {
+    function resize() {
+      const canvas = sigRef.current?.getCanvas()
+      const container = sigContainerRef.current
+      if (!canvas || !container) return
+      canvas.width = container.offsetWidth
+      canvas.height = container.offsetHeight
+      sigRef.current?.clear()
+    }
+    resize()
+    window.addEventListener("resize", resize)
+    return () => window.removeEventListener("resize", resize)
+  }, [])
   const [agreed, setAgreed] = useState(false)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -108,16 +123,11 @@ export function ContractSigner({
             清除
           </button>
         </div>
-        <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 overflow-hidden">
+        <div ref={sigContainerRef} className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 overflow-hidden" style={{ height: "180px" }}>
           <SignatureCanvas
             ref={sigRef}
             penColor="black"
-            canvasProps={{
-              width: 560,
-              height: 180,
-              className: "w-full touch-none",
-              style: { maxWidth: "100%", height: "180px" },
-            }}
+            canvasProps={{ className: "w-full h-full touch-none block" }}
             onBegin={() => setHasSignature(true)}
           />
         </div>

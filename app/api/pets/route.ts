@@ -11,7 +11,7 @@ const createPetSchema = z.object({
   customerId: z.string().min(1),
   name: shortText.min(1),
   species: shortText.optional(),
-  breed: shortText.nullish(),
+  breed: shortText.min(1),
   gender: shortText.optional(),
   birthday: z.string().optional().nullable(),
   chipNumber: shortText.nullish(),

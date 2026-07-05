@@ -298,6 +298,11 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true); setError("")
+    if (!form.breed.trim()) {
+      setError("請填寫寵物品種")
+      setLoading(false)
+      return
+    }
     try {
       const res = await fetch("/api/pets", {
         method: "POST",
@@ -433,9 +438,9 @@ export default function NewPetPage({ params }: { params: Promise<{ id: string }>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="breed">品種</Label>
+                    <Label htmlFor="breed">品種 *</Label>
                     <Input id="breed" placeholder="馬爾濟斯、柴犬..." value={form.breed}
-                      onChange={(e) => set("breed", e.target.value)} />
+                      onChange={(e) => set("breed", e.target.value)} required />
                   </div>
                   <div className="space-y-1.5">
                     <Label>性別</Label>
