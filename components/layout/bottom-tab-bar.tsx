@@ -38,7 +38,7 @@ export function BottomTabBar() {
   })
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-stretch border-t border-gray-200 bg-white lg:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 hidden max-lg:flex h-16 items-stretch border-t border-gray-200 bg-white">
       {visibleTabs.map((tab) => {
         const active = pathname === tab.href || pathname.startsWith(tab.href + "/")
         return (

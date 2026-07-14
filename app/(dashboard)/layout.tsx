@@ -37,7 +37,7 @@ export default async function DashboardLayout({
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <MobileHeader />
-      <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-gray-50 pt-12 lg:pt-0 pb-16 lg:pb-0">
+      <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-gray-50 max-lg:pt-12 max-lg:pb-16">
         {children}
       </main>
       <BottomTabBar />

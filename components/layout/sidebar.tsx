@@ -66,7 +66,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "relative hidden lg:flex h-screen flex-col border-r border-gray-200 bg-gray-950 text-white transition-all duration-300",
+        "relative flex max-lg:hidden h-screen flex-col border-r border-gray-200 bg-gray-950 text-white transition-all duration-300",
         collapsed ? "w-16" : "w-60"
       )}
     >
