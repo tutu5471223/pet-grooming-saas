@@ -49,3 +49,7 @@ dev.db
 dev.db-shm
 dev.db-wal
 dev-server.log
+
+# 含有正式機憑證的本機腳本，切勿提交
+scripts/ssh-run.mjs
+scripts/deploy-vps.mjs
