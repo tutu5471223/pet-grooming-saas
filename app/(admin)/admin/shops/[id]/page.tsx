@@ -147,20 +147,34 @@ export default function AdminShopDetailPage() {
               </>
             ) : <p className="text-sm text-gray-400">尚無訂閱紀錄</p>}
 
-            <div className="pt-3 border-t border-gray-100">
-              <p className="text-xs font-medium text-gray-600 mb-2">手動延長試用</p>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  min={1}
-                  max={365}
-                  value={extendDays}
-                  onChange={(e) => setExtendDays(e.target.value)}
-                  className="h-8 w-20 text-sm"
-                />
-                <span className="flex items-center text-sm text-gray-500">天</span>
-                <Button size="sm" onClick={() => doAction("extend_trial", { days: Number(extendDays) })} disabled={acting}>
-                  延長
+            <div className="pt-3 border-t border-gray-100 space-y-3">
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-2">手動延長試用</p>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={extendDays}
+                    onChange={(e) => setExtendDays(e.target.value)}
+                    className="h-8 w-20 text-sm"
+                  />
+                  <span className="flex items-center text-sm text-gray-500">天</span>
+                  <Button size="sm" onClick={() => doAction("extend_trial", { days: Number(extendDays) })} disabled={acting}>
+                    延長
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-2">永久啟用（無訂閱限制）</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-green-500 text-green-700 hover:bg-green-50 w-full"
+                  onClick={() => { if (confirm("確定將此店家設為永久訂閱（ACTIVE）？此操作會移除所有使用量限制。")) doAction("set_active") }}
+                  disabled={acting}
+                >
+                  設為永久訂閱
                 </Button>
               </div>
             </div>

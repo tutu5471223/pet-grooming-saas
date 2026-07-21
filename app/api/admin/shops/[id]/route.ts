@@ -6,7 +6,7 @@ import { readJson, z } from "@/lib/validation"
 import { sendEmail } from "@/lib/email"
 
 const adminShopActionSchema = z.object({
-  action: z.enum(["extend_trial", "disable_shop", "enable_shop", "approve_shop"]),
+  action: z.enum(["extend_trial", "set_active", "disable_shop", "enable_shop", "approve_shop"]),
   days: z.number().int().positive().max(3650).optional(),
 })
 
@@ -69,6 +69,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         resource: "shop",
         resourceId: id,
         detail: { days },
+      })
+      return NextResponse.json({ success: true })
+    }
+
+    if (body.action === "set_active") {
+      const farFuture = new Date("2099-01-01")
+      const existing = await prisma.subscription.findFirst({
+        where: { shopId: id },
+        orderBy: { createdAt: "desc" },
+      })
+      if (existing) {
+        await prisma.subscription.update({
+          where: { id: existing.id },
+          data: { status: "ACTIVE", currentPeriodEnd: farFuture },
+        })
+      } else {
+        // No subscription exists; create a permanent one with the first available plan
+        const plan = await prisma.plan.findFirst({ orderBy: { price: "asc" } })
+        if (plan) {
+          await prisma.subscription.create({
+            data: { shopId: id, planId: plan.id, status: "ACTIVE", currentPeriodStart: new Date(), currentPeriodEnd: farFuture },
+          })
+        }
+      }
+      await writeAudit({
+        shopId: id,
+        userId: session.user.id,
+        action: "admin.shop.set_active",
+        resource: "shop",
+        resourceId: id,
       })
       return NextResponse.json({ success: true })
     }
