@@ -290,7 +290,7 @@ export function StaffManager({ initialStaff, currentUserId, isAdmin }: StaffMana
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ROLES.map((r) => (
+                  {ROLES.filter((r) => r.value !== "OWNER").map((r) => (
                     <SelectItem key={r.value} value={r.value}>
                       {r.label}
                     </SelectItem>

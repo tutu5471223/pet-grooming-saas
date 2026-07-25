@@ -30,8 +30,9 @@ export async function GET() {
 // elevating to OWNER via the staff endpoint. Reject unknown role strings.
 const staffCreateSchema = z.object({
   name: shortText.min(1, "請填寫員工姓名"),
-  // Only STAFF may be created here; OWNER elevation via this endpoint is forbidden.
-  role: z.enum(["STAFF"]).optional(),
+  // STAFF (櫃台) or GROOMER (美容師) may be created here; OWNER elevation via
+  // this endpoint is forbidden (AUTH-7). Unknown role strings are rejected.
+  role: z.enum(["STAFF", "GROOMER"]).optional(),
   email: emailSchema.optional().nullable(),
   password: z.string().min(1).max(200).optional().nullable(),
 })
@@ -51,8 +52,9 @@ export async function POST(req: NextRequest) {
     const name = body.name.trim()
     const email = body.email?.trim() || null
     const password = body.password?.trim() || null
-    // Force role to STAFF — never allow OWNER elevation via this endpoint.
-    const role = "STAFF"
+    // Use the requested role (STAFF/GROOMER only per schema); default STAFF.
+    // OWNER is never accepted here — the schema rejects it before we get here.
+    const role = body.role ?? "STAFF"
 
     if (!name) {
       return NextResponse.json({ error: "請填寫員工姓名" }, { status: 400 })
