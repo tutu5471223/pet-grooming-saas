@@ -74,7 +74,7 @@ function IssueRow({
 export function ContractRegisterClient({ shopId, shopName, contractTemplate }: Props) {
   const [step, setStep] = useState(1)
   const [form, setForm] = useState({
-    name: "", phone: "", idNumber: "", address: "", petName: "", species: "犬", breed: "", gender: "UNKNOWN",
+    name: "", phone: "", secondContactName: "", secondContactPhone: "", idNumber: "", address: "", petName: "", species: "犬", breed: "", gender: "UNKNOWN",
   })
   const [health, setHealth] = useState<HealthState>(EMPTY_HEALTH)
   const [agreed, setAgreed] = useState(false)
@@ -119,6 +119,8 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
   function validateStep1(): string {
     if (!form.name.trim()) return "請填寫姓名"
     if (!/^09\d{8}$/.test(form.phone)) return "手機號碼格式錯誤（09xxxxxxxx）"
+    if (!form.secondContactName.trim()) return "請填寫第二聯絡人姓名"
+    if (!form.secondContactPhone.trim()) return "請填寫第二聯絡人電話"
     if (!form.address.trim()) return "請填寫地址"
     if (!form.petName.trim()) return "請填寫寵物名稱"
     if (!form.breed.trim()) return "請填寫寵物品種"
@@ -150,6 +152,8 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
         body: JSON.stringify({
           name: form.name.trim(),
           phone: form.phone,
+          secondContactName: form.secondContactName.trim(),
+          secondContactPhone: form.secondContactPhone.trim(),
           idNumber: form.idNumber.trim() || null,
           address: form.address.trim() || null,
           petName: form.petName.trim(),
@@ -234,6 +238,16 @@ export function ContractRegisterClient({ shopId, shopName, contractTemplate }: P
                   <Label htmlFor="phone" className="text-xs">手機號碼 *</Label>
                   <Input id="phone" type="tel" placeholder="0912345678" value={form.phone}
                     onChange={(e) => setField("phone", e.target.value)} className="h-10" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="secondContactName" className="text-xs">第二聯絡人姓名 *</Label>
+                  <Input id="secondContactName" placeholder="第二聯絡人姓名" value={form.secondContactName}
+                    onChange={(e) => setField("secondContactName", e.target.value)} className="h-10" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="secondContactPhone" className="text-xs">第二聯絡人電話 *</Label>
+                  <Input id="secondContactPhone" type="tel" placeholder="第二聯絡人聯絡電話" value={form.secondContactPhone}
+                    onChange={(e) => setField("secondContactPhone", e.target.value)} className="h-10" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="idNumber" className="text-xs">身分證字號（選填）</Label>

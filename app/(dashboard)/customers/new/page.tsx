@@ -361,7 +361,7 @@ export default function NewCustomerPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [form, setForm] = useState({
-    name: "", phone: "", lineId: "", idNumber: "", address: "", notes: "",
+    name: "", phone: "", secondContactName: "", secondContactPhone: "", lineId: "", idNumber: "", address: "", notes: "",
   })
   const [petForm, setPetForm] = useState<PetForm>(EMPTY_PET)
 
@@ -435,7 +435,7 @@ export default function NewCustomerPage() {
       }
       const { text } = await res.json() as { text: string }
       const parsed = parseCustomerText(text, ocrKw)
-      setForm({ name: parsed.name, phone: parsed.phone, lineId: parsed.lineId, idNumber: parsed.idNumber, address: parsed.address, notes: parsed.notes })
+      setForm((f) => ({ ...f, name: parsed.name, phone: parsed.phone, lineId: parsed.lineId, idNumber: parsed.idNumber, address: parsed.address, notes: parsed.notes }))
       const pet = parsePetFromText(text, ocrKw)
       if (pet) setPetForm((f) => ({ ...f, name: pet.name, species: pet.species, breed: pet.breed, birthday: pet.birthday }))
       setScanProgress(100); setScanDone(true)
@@ -456,6 +456,16 @@ export default function NewCustomerPage() {
     setLoading(true); setError("")
     if (!form.address.trim()) {
       setError("請填寫客人地址")
+      setLoading(false)
+      return
+    }
+    if (!form.secondContactName.trim()) {
+      setError("請填寫第二聯絡人姓名")
+      setLoading(false)
+      return
+    }
+    if (!form.secondContactPhone.trim()) {
+      setError("請填寫第二聯絡人電話")
       setLoading(false)
       return
     }
@@ -603,6 +613,18 @@ export default function NewCustomerPage() {
                 <Label htmlFor="phone">電話 *</Label>
                 <Input id="phone" placeholder="09xx-xxx-xxx" value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })} required />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="secondContactName">第二聯絡人姓名 *</Label>
+                <Input id="secondContactName" placeholder="第二聯絡人姓名" value={form.secondContactName}
+                  onChange={(e) => setForm({ ...form, secondContactName: e.target.value })} required />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="secondContactPhone">第二聯絡人電話 *</Label>
+                <Input id="secondContactPhone" placeholder="09xx-xxx-xxx" value={form.secondContactPhone}
+                  onChange={(e) => setForm({ ...form, secondContactPhone: e.target.value })} required />
               </div>
             </div>
             <div className="space-y-1.5">

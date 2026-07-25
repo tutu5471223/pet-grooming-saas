@@ -9,6 +9,9 @@ import { readJson, z, shortText, phone } from "@/lib/validation"
 const createCustomerSchema = z.object({
   name: shortText.min(1),
   phone: phone,
+  // 第二聯絡人姓名／電話為必填
+  secondContactName: shortText.min(1, "請填寫第二聯絡人姓名"),
+  secondContactPhone: phone,
   lineId: z.string().trim().max(100).optional().nullable(),
   idNumber: shortText.optional().nullable(),
   address: shortText.min(1),
@@ -78,6 +81,8 @@ export async function POST(req: NextRequest) {
       data: {
         name: body.name,
         phone: body.phone,
+        secondContactName: body.secondContactName,
+        secondContactPhone: body.secondContactPhone,
         lineId: body.lineId || null,
         idNumber: body.idNumber || null,
         address: body.address || null,

@@ -11,6 +11,9 @@ const MAX_SIGNATURE_LEN = 2_000_000
 const registerSchema = z.object({
   name: shortText.min(1),
   phone: z.string().trim().regex(/^09\d{8}$/, "手機號碼格式錯誤（09xxxxxxxx）"),
+  // 第二聯絡人姓名／電話為必填
+  secondContactName: shortText.min(1, "請填寫第二聯絡人姓名"),
+  secondContactPhone: z.string().trim().min(3, "請填寫第二聯絡人電話").max(30),
   idNumber: shortText.optional().nullable(),
   address: shortText.min(1),
   petName: shortText.min(1),
@@ -67,7 +70,7 @@ export async function POST(
   const parsed = await readJson(req, registerSchema)
   if (!parsed.ok) return parsed.response
   const {
-    name, phone, idNumber, address, petName, species, breed, gender, signerName, signatureUrl,
+    name, phone, secondContactName, secondContactPhone, idNumber, address, petName, species, breed, gender, signerName, signatureUrl,
     personality, boneIssue, boneNote, skinIssue, skinNote, earIssue, earNote, eyeIssue, eyeNote,
     heartDisease, boneDisease, skinDisease, epilepsy, diabetes, surgeryHistory, surgeryNote, otherDisease,
     bathFrequency, groomFrequency, blowDryerFear, afterGroomHandle,
@@ -100,19 +103,28 @@ export async function POST(
         data: {
           name: name.trim(),
           phone,
+          secondContactName: secondContactName.trim(),
+          secondContactPhone: secondContactPhone.trim(),
           shopId,
           idNumber: idNumber?.trim() || null,
           address: address?.trim() || null,
         },
       })
     } else {
-      // Update idNumber/address if provided and not already set
-      if ((idNumber && !customer.idNumber) || (address && !customer.address)) {
+      // Update idNumber/address/第二聯絡人 if provided and not already set
+      if (
+        (idNumber && !customer.idNumber) ||
+        (address && !customer.address) ||
+        !customer.secondContactName ||
+        !customer.secondContactPhone
+      ) {
         customer = await prisma.customer.update({
           where: { id: customer.id },
           data: {
             idNumber: idNumber?.trim() || customer.idNumber,
             address: address?.trim() || customer.address,
+            secondContactName: customer.secondContactName || secondContactName.trim(),
+            secondContactPhone: customer.secondContactPhone || secondContactPhone.trim(),
           },
         })
       }
