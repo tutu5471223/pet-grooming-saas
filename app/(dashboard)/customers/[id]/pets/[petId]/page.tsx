@@ -23,6 +23,7 @@ import { ContractPDFDownload } from "@/components/contracts/contract-pdf-downloa
 import { PetServicePricing } from "@/components/pets/pet-service-pricing"
 import { PetMonthlyPlanManager } from "@/components/pets/pet-monthly-plan-manager"
 import { GroomingRecordActions } from "@/components/pets/grooming-record-actions"
+import { DeletePetButton } from "@/components/pets/delete-pet-button"
 import {
   formatDate,
   formatDateTime,
@@ -168,9 +169,17 @@ export default async function PetDetailPage({
             </div>
           </div>
         </div>
-        <Link href={`/customers/${customerId}/pets/${petId}/edit`}>
-          <Button variant="outline" size="sm">編輯寵物資料</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href={`/customers/${customerId}/pets/${petId}/edit`}>
+            <Button variant="outline" size="sm">編輯寵物資料</Button>
+          </Link>
+          <DeletePetButton
+            petId={petId}
+            customerId={customerId}
+            petName={pet.name}
+            hasRecords={pet.groomingRecords.length > 0 || pet.appointments.length > 0}
+          />
+        </div>
       </div>
 
       {/* Quick stats */}
