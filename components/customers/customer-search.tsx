@@ -26,7 +26,7 @@ export function CustomerSearch({ defaultValue }: { defaultValue: string }) {
       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
       <Input
         type="search"
-        placeholder="搜尋姓名、電話、LINE ID..."
+        placeholder="搜尋姓名、電話、LINE ID、寵物名..."
         defaultValue={defaultValue}
         onChange={handleSearch}
         className="pl-10"

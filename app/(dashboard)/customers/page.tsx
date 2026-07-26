@@ -1,27 +1,13 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { formatDate, formatCurrency, contractStatusLabel } from "@/lib/utils"
+import { formatDate } from "@/lib/utils"
 import Link from "next/link"
-import {
-  Plus,
-  Phone,
-  PawPrint,
-  ChevronRight,
-  Users,
-  Wallet,
-  Star,
-} from "lucide-react"
+import { Plus, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { CustomerSearch } from "@/components/customers/customer-search"
 import { CustomerMergeDialog } from "@/components/customers/customer-merge-dialog"
 import { CustomerNotifyDialog } from "@/components/customers/customer-notify-dialog"
-
-const FLAG_ICONS: Record<string, string> = {
-  WARNING: "⚠️",
-  BLOCKED: "🚫",
-  VIP: "⭐",
-}
+import { CustomerCard } from "@/components/customers/customer-card"
 
 async function getCustomers(shopId: string, search: string) {
   return prisma.customer.findMany({
@@ -33,6 +19,8 @@ async function getCustomers(shopId: string, search: string) {
             { name: { contains: search } },
             { phone: { contains: search } },
             { lineId: { contains: search } },
+            // 機能4：以寵物名搜尋也能找到對應客人
+            { pets: { some: { name: { contains: search }, isActive: true } } },
           ]
         : undefined,
     },
@@ -114,7 +102,6 @@ export default async function CustomersPage({
       ) : (
         <div className="space-y-3">
           {customers.map((customer) => {
-            const totalPets = customer.pets.length
             const totalGroomings = customer.pets.reduce(
               (sum, p) => sum + p._count.groomingRecords,
               0
@@ -123,81 +110,26 @@ export default async function CustomersPage({
               .flatMap((p) => p.groomingRecords)
               .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.date
 
-            const flagIcon = customer.flagType ? FLAG_ICONS[customer.flagType] : null
-
             return (
-              <Link key={customer.id} href={`/customers/${customer.id}`}>
-                <Card className={`cursor-pointer hover:shadow-md transition-shadow ${
-                  customer.flagType === "BLOCKED" ? "border-red-200 bg-red-50/30" :
-                  customer.flagType === "WARNING" ? "border-yellow-200 bg-yellow-50/30" :
-                  customer.flagType === "VIP" ? "border-yellow-300 bg-yellow-50/20" : ""
-                }`}>
-                  <CardContent className="p-5">
-                    <div className="flex items-start gap-4">
-                      {/* Avatar */}
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 font-bold text-lg">
-                        {customer.name[0]}
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {flagIcon && <span>{flagIcon}</span>}
-                          <span className="font-semibold text-gray-900">{customer.name}</span>
-                          {customer.memberLevel && (
-                            <span
-                              className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                              style={{ backgroundColor: customer.memberLevel.color }}
-                            >
-                              {customer.memberLevel.name}
-                            </span>
-                          )}
-                          {customer.flagType === "BLOCKED" && (
-                            <span className="text-xs bg-red-100 text-red-700 rounded-full px-2 py-0.5">拒絕服務</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 mt-1 text-sm text-gray-500 flex-wrap">
-                          <span className="flex items-center gap-1">
-                            <Phone className="h-3.5 w-3.5" />
-                            {customer.phone}
-                          </span>
-                          {customer.lineId && (
-                            <span className="text-green-600">LINE: {customer.lineId}</span>
-                          )}
-                        </div>
-                        {customer.flagNote && (
-                          <p className="mt-1 text-xs text-gray-500 italic">{customer.flagNote}</p>
-                        )}
-
-                        {/* Stats row */}
-                        <div className="flex items-center gap-4 mt-2.5 flex-wrap">
-                          <span className="flex items-center gap-1.5 text-xs text-gray-600">
-                            <PawPrint className="h-3.5 w-3.5 text-indigo-400" />
-                            {totalPets} 隻寵物
-                          </span>
-                          <span className="flex items-center gap-1.5 text-xs text-gray-600">
-                            <Wallet className="h-3.5 w-3.5 text-green-400" />
-                            儲值 {formatCurrency(customer.storedValue)}
-                          </span>
-                          <span className="flex items-center gap-1.5 text-xs text-gray-600">
-                            <Star className="h-3.5 w-3.5 text-yellow-400" />
-                            {customer.points} 點
-                          </span>
-                          {totalGroomings > 0 && (
-                            <span className="text-xs text-gray-500">
-                              美容 {totalGroomings} 次・
-                              上次到店 {formatDate(lastVisit)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Arrow */}
-                      <ChevronRight className="h-5 w-5 text-gray-400 shrink-0 mt-1" />
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
+              <CustomerCard
+                key={customer.id}
+                customer={{
+                  id: customer.id,
+                  name: customer.name,
+                  phone: customer.phone,
+                  lineId: customer.lineId,
+                  flagType: customer.flagType,
+                  flagNote: customer.flagNote,
+                  memberLevel: customer.memberLevel
+                    ? { name: customer.memberLevel.name, color: customer.memberLevel.color }
+                    : null,
+                  storedValue: customer.storedValue,
+                  points: customer.points,
+                  pets: customer.pets.map((p) => ({ id: p.id, name: p.name })),
+                  totalGroomings,
+                  lastVisitLabel: lastVisit ? formatDate(lastVisit) : null,
+                }}
+              />
             )
           })}
         </div>
