@@ -55,11 +55,11 @@ export function DeletePetButton({ petId, customerId, petName, hasRecords }: Dele
       <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>刪除寵物</DialogTitle>
+            <DialogTitle>刪除寵物「{petName}」</DialogTitle>
             <DialogDescription>
               {hasRecords
-                ? `此寵物有美容紀錄／預約，確定要刪除嗎？`
-                : `確定要刪除「${petName}」嗎？`}
+                ? "此寵物有美容紀錄/預約，確定要刪除嗎？"
+                : "確定要刪除嗎？"}
             </DialogDescription>
           </DialogHeader>
           {error && <p className="text-sm text-red-600">{error}</p>}
