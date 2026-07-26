@@ -1,8 +1,8 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { format, startOfDay, endOfDay, addDays, subDays, startOfWeek, addMinutes } from "date-fns"
+import { format, startOfDay, endOfDay, addDays, subDays, startOfWeek } from "date-fns"
 import Link from "next/link"
-import { Calendar, ChevronLeft, ChevronRight, Plus, Scissors, LayoutGrid, List } from "lucide-react"
+import { Calendar, ChevronLeft, ChevronRight, Plus, Scissors, LayoutGrid, List, Repeat } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency, appointmentStatusLabel } from "@/lib/utils"
@@ -98,6 +98,12 @@ export default async function AppointmentsPage({
               <LayoutGrid className="h-4 w-4" /> 週視圖
             </Link>
           </div>
+          <Link href="/appointments/recurring">
+            <Button size="sm" variant="outline">
+              <Repeat className="h-4 w-4" />
+              固定週期預約
+            </Button>
+          </Link>
           <Link href="/appointments/new">
             <Button size="sm">
               <Plus className="h-4 w-4" />
