@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { checkStaffLimit } from "@/lib/subscription-guard"
 import { writeAudit } from "@/lib/audit"
-import { readJson, shortText, email as emailSchema, z } from "@/lib/validation"
+import { shortText, email as emailSchema, z } from "@/lib/validation"
 
 export async function GET() {
   // C1: central guard (401 if no shopId / 403 if shop not ACTIVE).
@@ -28,13 +28,20 @@ export async function GET() {
 
 // AUTH-7: validate role against an explicit allowlist and DISALLOW creating/
 // elevating to OWNER via the staff endpoint. Reject unknown role strings.
+//
+// 前端表單即使欄位留空也會送出空字串 ""（email、password）。空字串必須被視為
+// 「未填」而非無效值，否則只填姓名就會被 email/password 驗證擋下（就是這次的
+// 「輸入資料格式錯誤」bug）。用 preprocess 把空白字串轉成 undefined。
+const emptyToUndefined = (v: unknown) =>
+  v == null || (typeof v === "string" && v.trim() === "") ? undefined : v
+
 const staffCreateSchema = z.object({
   name: shortText.min(1, "請填寫員工姓名"),
   // STAFF (櫃台) or GROOMER (美容師) may be created here; OWNER elevation via
   // this endpoint is forbidden (AUTH-7). Unknown role strings are rejected.
-  role: z.enum(["STAFF", "GROOMER"]).optional(),
-  email: emailSchema.optional().nullable(),
-  password: z.string().min(1).max(200).optional().nullable(),
+  role: z.preprocess(emptyToUndefined, z.enum(["STAFF", "GROOMER"]).optional()),
+  email: z.preprocess(emptyToUndefined, emailSchema.optional()),
+  password: z.preprocess(emptyToUndefined, z.string().min(8).max(200).optional()),
 })
 
 export async function POST(req: NextRequest) {
@@ -44,9 +51,39 @@ export async function POST(req: NextRequest) {
 
   const { shopId, userId } = guard.ctx
 
-  const parsed = await readJson(req, staffCreateSchema)
-  if (!parsed.ok) return parsed.response
-  const body = parsed.data
+  // 手動解析以便印出收到的資料與驗證錯誤，方便定位是哪個欄位驗證失敗。
+  let raw: unknown
+  try {
+    raw = await req.json()
+  } catch {
+    return NextResponse.json({ error: "請求內容不是合法的 JSON" }, { status: 400 })
+  }
+  console.log("[staff.create] 收到資料：", JSON.stringify(raw))
+
+  const parsedResult = staffCreateSchema.safeParse(raw)
+  if (!parsedResult.success) {
+    const issues = parsedResult.error.issues.map((i) => ({
+      path: i.path.join("."),
+      message: i.message,
+    }))
+    console.log("[staff.create] Zod 驗證失敗：", JSON.stringify(issues))
+    const fieldLabels: Record<string, string> = {
+      name: "姓名",
+      email: "Email",
+      password: "密碼",
+      role: "角色",
+    }
+    const first = issues[0]
+    const label = first ? fieldLabels[first.path] ?? first.path : ""
+    return NextResponse.json(
+      {
+        error: label ? `「${label}」欄位有誤：${first.message}` : "輸入資料格式錯誤",
+        details: issues,
+      },
+      { status: 400 }
+    )
+  }
+  const body = parsedResult.data
 
   try {
     const name = body.name.trim()

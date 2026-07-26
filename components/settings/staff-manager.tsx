@@ -69,13 +69,33 @@ export function StaffManager({ initialStaff, currentUserId, isAdmin }: StaffMana
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
+
+    // 前端防呆：姓名必填；Email 與密碼需成對填寫。
+    if (!form.name.trim()) { setAddError("請填寫「姓名」"); return }
+    const email = form.email.trim()
+    const password = form.password.trim()
+    if (!!email !== !!password) {
+      setAddError(email ? "已填 Email，請一併填寫「密碼」" : "已填密碼，請一併填寫「Email」")
+      return
+    }
+    if (password && (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password))) {
+      setAddError("「密碼」至少 8 字元，且須包含英文字母與數字")
+      return
+    }
+
     setAddLoading(true)
     setAddError("")
     try {
       const res = await fetch("/api/staff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        // 空欄位送 null 而非空字串，避免後端把 "" 當成無效值。
+        body: JSON.stringify({
+          name: form.name.trim(),
+          role: form.role,
+          email: email || null,
+          password: password || null,
+        }),
       })
       if (!res.ok) {
         const data = await res.json()
