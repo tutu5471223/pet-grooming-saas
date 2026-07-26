@@ -62,6 +62,10 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await prisma.appointment.createMany({
+      // status 固定為 PENDING、reminderSentAt 預設為 null，因此這些預約會與一般
+      // 預約一樣被前一天的 LINE 提醒 cron 涵蓋（app/api/cron/reminder 與
+      // app/api/cron/appointment-reminder 都是查 status ∈ [CONFIRMED, PENDING]
+      // 且 reminderSentAt = null，並未依 source 過濾）。改動請保持此不變式。
       data: dates.map((scheduledAt) => ({
         petId: body.petId,
         shopId,
