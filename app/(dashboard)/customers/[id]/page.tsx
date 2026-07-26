@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Phone,
   MapPin,
+  UserPlus,
   Plus,
   PawPrint,
   Wallet,
@@ -111,6 +112,13 @@ export default async function CustomerDetailPage({
                 <span className="flex items-center gap-1 min-w-0">
                   <MapPin className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{customer.address}</span>
+                </span>
+              )}
+              {customer.secondContactName && (
+                <span className="flex items-center gap-1">
+                  <UserPlus className="h-3.5 w-3.5 shrink-0" />
+                  第二聯絡人：{customer.secondContactName}
+                  {customer.secondContactPhone ? ` ${customer.secondContactPhone}` : ""}
                 </span>
               )}
             </div>
