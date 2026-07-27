@@ -1,7 +1,8 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireAuth } from "@/lib/auth-guard"
+import { requireAuth, requireRole } from "@/lib/auth-guard"
+import { writeAudit } from "@/lib/audit"
 import { readJson, z, shortText } from "@/lib/validation"
 
 const updatePetSchema = z.object({
@@ -145,19 +146,47 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const guard = await requireAuth()
+  // 破壞性操作 —— 與 customer / grooming 刪除一致，限 OWNER。
+  const guard = await requireRole(["OWNER"])
   if (!guard.ok) return guard.response
 
   const { id } = await params
-  const { shopId } = guard.ctx
+  const { shopId, userId } = guard.ctx
 
   try {
-    await prisma.pet.updateMany({
+    const pet = await prisma.pet.findFirst({
       where: { id, shopId },
-      data: { isActive: false },
+      select: { id: true, name: true },
+    })
+    if (!pet) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    const now = new Date()
+    const cancelledCount = await prisma.$transaction(async (tx) => {
+      await tx.pet.updateMany({ where: { id, shopId }, data: { isActive: false } })
+      // 取消尚未發生的預約：否則 cron 仍會對已刪除寵物的客戶發 LINE 提醒，
+      // 且該預約會殘留在排程頁。歷史紀錄（美容/住宿/已完成預約）保留不動。
+      const cancelled = await tx.appointment.updateMany({
+        where: {
+          petId: id,
+          shopId,
+          scheduledAt: { gte: now },
+          status: { in: ["PENDING", "CONFIRMED"] },
+        },
+        data: { status: "CANCELLED" },
+      })
+      return cancelled.count
     })
 
-    return NextResponse.json({ success: true })
+    await writeAudit({
+      shopId,
+      userId,
+      action: "DELETE_PET",
+      resource: "Pet",
+      resourceId: id,
+      detail: { name: pet.name, cancelledAppointments: cancelledCount },
+    })
+
+    return NextResponse.json({ success: true, cancelledAppointments: cancelledCount })
   } catch (error) {
     console.error("DELETE /api/pets/[id]", error)
     return NextResponse.json({ error: "操作失敗，請稍後再試" }, { status: 500 })

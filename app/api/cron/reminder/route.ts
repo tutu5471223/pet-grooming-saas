@@ -57,6 +57,9 @@ export async function GET(req: NextRequest) {
       // M9: skip appointments already reminded (idempotent — avoids re-spamming
       // if the cron runs twice or both reminder routes are scheduled).
       reminderSentAt: null,
+      // 只提醒仍有效的寵物：寵物被軟刪後，DELETE 已把未來預約設為 CANCELLED，
+      // 這裡再加一層防護，確保絕不對已刪除寵物發提醒。
+      pet: { isActive: true },
     },
     include: {
       pet: { include: { customer: true } },

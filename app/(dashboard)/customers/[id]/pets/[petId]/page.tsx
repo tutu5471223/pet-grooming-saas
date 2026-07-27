@@ -173,12 +173,14 @@ export default async function PetDetailPage({
           <Link href={`/customers/${customerId}/pets/${petId}/edit`}>
             <Button variant="outline" size="sm">編輯寵物資料</Button>
           </Link>
-          <DeletePetButton
-            petId={petId}
-            customerId={customerId}
-            petName={pet.name}
-            hasRecords={pet.groomingRecords.length > 0 || pet.appointments.length > 0}
-          />
+          {session!.user.role === "OWNER" && (
+            <DeletePetButton
+              petId={petId}
+              customerId={customerId}
+              petName={pet.name}
+              hasRecords={pet.groomingRecords.length > 0 || pet.appointments.length > 0}
+            />
+          )}
         </div>
       </div>
 

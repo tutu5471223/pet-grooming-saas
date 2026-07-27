@@ -61,6 +61,8 @@ export async function GET(req: NextRequest) {
       status: { in: ["CONFIRMED", "PENDING"] },
       // M9: skip appointments already reminded (shared idempotency flag).
       reminderSentAt: null,
+      // 已軟刪的寵物不再提醒（DELETE 已取消其未來預約，這是額外防護）。
+      pet: { isActive: true },
     },
     include: {
       pet: { include: { customer: true } },
