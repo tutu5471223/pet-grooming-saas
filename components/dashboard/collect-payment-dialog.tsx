@@ -18,7 +18,7 @@ import { CheckCircle2, Wallet, PackageCheck, CreditCard, Banknote } from "lucide
 const BILLING_TYPES = [
   { value: "SINGLE", label: "單次收款", icon: Banknote, desc: "現金／刷卡／轉帳／LINE Pay" },
   { value: "MONTHLY_PLAN", label: "使用包月方案", icon: PackageCheck, desc: "套用現有包月次數" },
-  { value: "NEW_MONTHLY_PLAN", label: "新建包月方案", icon: PackageCheck, desc: "建立新方案並套用首次" },
+  { value: "NEW_MONTHLY_PLAN", label: "新建包月方案", icon: PackageCheck, desc: "一次收整包（次數×單價），本次算第1次" },
   { value: "CREDIT", label: "儲值金扣款", icon: Wallet, desc: "從儲值餘額扣除" },
 ]
 
@@ -229,6 +229,17 @@ export function CollectPaymentDialog({ paymentId, amount, open, onOpenChange }: 
                       className="mt-1"
                     />
                   </div>
+                </div>
+                <div className="rounded-lg bg-white border border-purple-200 px-3 py-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">本次應收（整包）</span>
+                    <span className="font-semibold text-purple-800">
+                      {formatCurrency((Number(planData.maxSessions) || 0) * (Number(planData.pricePerSession) || 0))}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {planData.maxSessions || 0} 次 × {formatCurrency(Number(planData.pricePerSession) || 0)}，本次算第 1 次；此金額將取代上方原應收金額。
+                  </p>
                 </div>
               </div>
             )}

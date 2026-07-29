@@ -145,7 +145,10 @@ export async function POST(
             usedSessions: 1,
           },
         })
-        finalAmount = round2(validatedNewPlan.pricePerSession)
+        // 購買並使用包月：一次收取「整包」全額（次數 × 單價），本次算第 1 次；
+        // 之後各次走 MONTHLY_PLAN 扣次不再收費。與預約頁「購買並使用」一致，
+        // 避免只收單次卻贈送整包次數造成少收。
+        finalAmount = round2(validatedNewPlan.maxSessions * validatedNewPlan.pricePerSession)
         resolvedMonthlyPlanId = newPlan.id
       }
 
