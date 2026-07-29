@@ -85,6 +85,16 @@ const SOURCES = [
   { value: "WEB", label: "網路" },
 ]
 
+// 從失敗的 Response 盡量取出可讀錯誤：先讀原始 text，再嘗試解析 JSON 的 error 欄位。
+// 回傳 apiError（後端 error 字串）與 bodyText（完整原始內容，供 console 檢視）。
+async function extractApiError(res: Response): Promise<{ apiError: string; bodyText: string }> {
+  let bodyText = ""
+  try { bodyText = await res.text() } catch { /* ignore */ }
+  let apiError = ""
+  try { apiError = (JSON.parse(bodyText) as { error?: string })?.error ?? "" } catch { /* not JSON */ }
+  return { apiError, bodyText }
+}
+
 export default function NewAppointmentPage() {
   const router = useRouter()
 
@@ -345,8 +355,19 @@ export default function NewAppointmentPage() {
           }),
         })
         if (!planRes.ok) {
-          const d = await planRes.json().catch(() => ({}))
-          throw new Error(d.error || "購買包月失敗")
+          const { apiError, bodyText } = await extractApiError(planRes)
+          console.error("[購買並使用包月] 建立包月方案失敗", {
+            url: `/api/pets/${selectedPetId}/monthly-plans`,
+            status: planRes.status,
+            statusText: planRes.statusText,
+            apiError,
+            body: bodyText,
+          })
+          throw new Error(
+            apiError
+              ? `購買包月失敗：${apiError}`
+              : `購買包月失敗（HTTP ${planRes.status} ${planRes.statusText}）`
+          )
         }
         const newPlan = await planRes.json()
         usePlanId = newPlan.id
@@ -382,9 +403,25 @@ export default function NewAppointmentPage() {
         setSubmitting(false)
         return
       }
-      if (!res.ok) throw new Error("建立失敗")
+      if (!res.ok) {
+        const { apiError, bodyText } = await extractApiError(res)
+        console.error("[建立預約] 失敗", {
+          url: "/api/appointments",
+          status: res.status,
+          statusText: res.statusText,
+          apiError,
+          body: bodyText,
+        })
+        throw new Error(
+          apiError
+            ? `建立預約失敗：${apiError}`
+            : `建立預約失敗（HTTP ${res.status} ${res.statusText}）`
+        )
+      }
       router.push("/appointments")
     } catch (err: unknown) {
+      // 完整印出錯誤物件（含 stack），方便從 F12 Console 追查真正原因。
+      console.error("[預約/購買包月] 送出流程失敗：", err)
       setError(err instanceof Error ? err.message : "建立預約失敗，請再試一次")
     } finally {
       setSubmitting(false)
