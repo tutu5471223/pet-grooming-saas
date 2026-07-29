@@ -115,6 +115,14 @@ export default async function PetDetailPage({
 
   if (!pet) notFound()
 
+  // 精準判斷「是否有美容紀錄或預約」，供刪除提示文字使用。
+  // 預約只計算「未取消」的：已取消（含刪除寵物時自動取消）的預約不算「有預約」，
+  // 否則幾乎每隻寵物都會被判為有紀錄，導致提示文字無法依實際情況變化。
+  const activeAppointmentCount = await prisma.appointment.count({
+    where: { petId, shopId, status: { not: "CANCELLED" } },
+  })
+  const petHasRecords = pet.groomingRecords.length > 0 || activeAppointmentCount > 0
+
   const cs = contractStatusLabel(pet.contract?.status ?? "PENDING")
   const hdrs = await headers()
   const host = hdrs.get("host") ?? "localhost:3000"
@@ -178,7 +186,7 @@ export default async function PetDetailPage({
               petId={petId}
               customerId={customerId}
               petName={pet.name}
-              hasRecords={pet.groomingRecords.length > 0 || pet.appointments.length > 0}
+              hasRecords={petHasRecords}
             />
           )}
         </div>
