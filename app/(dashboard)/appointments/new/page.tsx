@@ -329,6 +329,10 @@ export default function NewAppointmentPage() {
         const endDate = new Date(today)
         endDate.setDate(endDate.getDate() + (template.validDays || 30))
         const pricePerSession = template.sessions > 0 ? template.price / template.sessions : 0
+        // API 的 parseTaipeiDate 期望 "yyyy-MM-dd"（會補上 T00:00:00+08:00）；
+        // 送完整 ISO 字串會組成無效日期而被擋下。用台北時區日期字串。
+        const toTaipeiDate = (d: Date) =>
+          new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Taipei" }).format(d)
         const planRes = await fetch(`/api/pets/${selectedPetId}/monthly-plans`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -336,11 +340,14 @@ export default function NewAppointmentPage() {
             name: template.name,
             maxSessions: template.sessions,
             pricePerSession,
-            startDate: today.toISOString(),
-            endDate: endDate.toISOString(),
+            startDate: toTaipeiDate(today),
+            endDate: toTaipeiDate(endDate),
           }),
         })
-        if (!planRes.ok) throw new Error("購買包月失敗")
+        if (!planRes.ok) {
+          const d = await planRes.json().catch(() => ({}))
+          throw new Error(d.error || "購買包月失敗")
+        }
         const newPlan = await planRes.json()
         usePlanId = newPlan.id
       }
