@@ -975,11 +975,14 @@ export default async function ReportsPage({
                         return (
                           <tr key={p.id} className="hover:bg-gray-50/50">
                             <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                              {rec ? format(new Date(rec.date), "MM/dd") : "—"}
+                              {/* 美容應收用美容日期；包月/儲值等無美容紀錄的應收，退回帳款建立日期 */}
+                              {rec ? format(new Date(rec.date), "MM/dd") : format(new Date(p.createdAt), "MM/dd")}
                             </td>
                             <td className="px-4 py-3 text-gray-900">{customerName}</td>
                             <td className="px-4 py-3 text-gray-700">{rec?.pet?.name ?? "—"}</td>
-                            <td className="px-4 py-3 text-gray-600 max-w-[160px] truncate">{services || "美容"}</td>
+                            <td className="px-4 py-3 text-gray-600 max-w-[160px] truncate">
+                              {services || (p.billingType === "MONTHLY_PLAN" ? "包月方案" : p.billingType === "CREDIT" ? "儲值扣款" : "美容")}
+                            </td>
                             <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(p.amount)}</td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
