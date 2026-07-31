@@ -61,12 +61,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "無法產生任何預約日期" }, { status: 400 })
     }
 
+    // 時段衝突檢查（與一般預約一致）：只有在有指定美容師時才有「衝突」的概念。
+    // 撈該美容師既有（未取消/未 no-show）的預約，逐筆檢查時段是否重疊；
+    // 衝突者跳過，其餘照建。批次內各筆日期不同天、時刻相同，彼此不會重疊。
+    const duration = body.duration || 60
+    let toCreate = dates
+    const skipped: string[] = []
+
+    if (body.staffId) {
+      const existing = await prisma.appointment.findMany({
+        where: { shopId, staffId: body.staffId, status: { notIn: ["CANCELLED", "NO_SHOW"] } },
+        select: { scheduledAt: true, duration: true },
+      })
+      const ranges = existing.map((e) => {
+        const s = new Date(e.scheduledAt).getTime()
+        return { start: s, end: s + (e.duration ?? 60) * 60000 }
+      })
+      const kept: Date[] = []
+      for (const d of dates) {
+        const s = d.getTime()
+        const e = s + duration * 60000
+        const clash = ranges.some((r) => s < r.end && e > r.start)
+        if (clash) skipped.push(d.toISOString())
+        else kept.push(d)
+      }
+      toCreate = kept
+    }
+
+    if (toCreate.length === 0) {
+      // 全部時段都衝突 —— 回 409，前端顯示提示、不跳轉。
+      return NextResponse.json(
+        {
+          error: "所有時段都與該美容師的既有預約衝突，未建立任何預約",
+          count: 0,
+          skipped,
+        },
+        { status: 409 }
+      )
+    }
+
     const result = await prisma.appointment.createMany({
       // status 固定為 PENDING、reminderSentAt 預設為 null，因此這些預約會與一般
       // 預約一樣被前一天的 LINE 提醒 cron 涵蓋（app/api/cron/reminder 與
       // app/api/cron/appointment-reminder 都是查 status ∈ [CONFIRMED, PENDING]
       // 且 reminderSentAt = null，並未依 source 過濾）。改動請保持此不變式。
-      data: dates.map((scheduledAt) => ({
+      data: toCreate.map((scheduledAt) => ({
         petId: body.petId,
         shopId,
         staffId: body.staffId || null,
@@ -85,11 +124,16 @@ export async function POST(req: NextRequest) {
       action: "CREATE_RECURRING_APPOINTMENTS",
       resource: "Appointment",
       resourceId: body.petId,
-      detail: { count: result.count, intervalDays: body.intervalDays, startAt: body.startAt },
+      detail: {
+        count: result.count,
+        skipped: skipped.length,
+        intervalDays: body.intervalDays,
+        startAt: body.startAt,
+      },
     })
 
     return NextResponse.json(
-      { count: result.count, dates: dates.map((d) => d.toISOString()) },
+      { count: result.count, skipped, dates: toCreate.map((d) => d.toISOString()) },
       { status: 201 }
     )
   } catch (error) {

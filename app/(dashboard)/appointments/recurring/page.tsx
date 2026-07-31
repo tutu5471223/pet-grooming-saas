@@ -123,15 +123,27 @@ export default function RecurringAppointmentPage() {
           notes: notes || null,
         }),
       })
+      if (res.status === 409) {
+        // 全部時段都與該美容師既有預約衝突，未建立任何預約。
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || "所有時段都與該美容師的既有預約衝突，未建立任何預約")
+        setSubmitting(false)
+        return
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "建立失敗")
       }
       const data = await res.json()
+      const skippedCount = Array.isArray(data.skipped) ? data.skipped.length : 0
+      // 先提示再跳轉（跳轉後元件卸載，alert 會來不及顯示）。
+      alert(
+        skippedCount > 0
+          ? `已建立 ${data.count} 筆固定週期預約；有 ${skippedCount} 筆因與該美容師時段衝突已跳過。`
+          : `已建立 ${data.count} 筆固定週期預約`
+      )
       router.push("/appointments")
       router.refresh()
-      // 顯示簡短結果
-      alert(`已建立 ${data.count} 筆固定週期預約`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "建立固定週期預約失敗，請再試一次")
       setSubmitting(false)
