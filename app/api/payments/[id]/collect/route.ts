@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAuth } from "@/lib/auth-guard"
-import { round2, parseMoney } from "@/lib/money"
+import { round2, parseMoney, MAX_MONEY } from "@/lib/money"
 
 export async function POST(
   req: NextRequest,
@@ -56,6 +56,11 @@ export async function POST(
     const maxSessions = Number(monthlyPlanData.maxSessions)
     if (!Number.isInteger(maxSessions) || maxSessions <= 0 || maxSessions > 10000) {
       return NextResponse.json({ error: "包月次數不正確" }, { status: 400 })
+    }
+    // NEW_MONTHLY_PLAN 收整包全額（次數 × 單價），確認總額不超過上限，
+    // 避免次數/單價 fat-finger 造成異常大額收款。
+    if (round2(maxSessions * price) > MAX_MONEY) {
+      return NextResponse.json({ error: "包月總額超過上限，請確認次數與每次金額" }, { status: 400 })
     }
     validatedNewPlan = {
       name: monthlyPlanData.name,

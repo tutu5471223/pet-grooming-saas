@@ -9,6 +9,10 @@ import { readJson, z, shortText, phone } from "@/lib/validation"
 const updateCustomerSchema = z.object({
   name: shortText.min(1).optional(),
   phone: phone.optional(),
+  // 第二聯絡人：與新增/自助建檔一致為必填。PATCH 為部分更新，故此處 optional
+  // （其他只更新 flag 等欄位的呼叫不會傳），但一旦傳入就必須非空、格式正確。
+  secondContactName: shortText.min(1, "請填寫第二聯絡人姓名").optional(),
+  secondContactPhone: phone.optional(),
   lineId: z.string().trim().max(100).optional().nullable(),
   idNumber: shortText.optional().nullable(),
   address: shortText.optional().nullable(),
@@ -75,6 +79,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: {
         name: body.name,
         phone: body.phone,
+        secondContactName: body.secondContactName,
+        secondContactPhone: body.secondContactPhone,
         lineId: body.lineId !== undefined ? (body.lineId || null) : undefined,
         idNumber: body.idNumber !== undefined ? (body.idNumber || null) : undefined,
         address: body.address !== undefined ? (body.address || null) : undefined,

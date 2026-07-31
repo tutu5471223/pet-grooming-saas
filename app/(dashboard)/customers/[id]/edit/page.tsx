@@ -22,6 +22,8 @@ interface Customer {
   id: string
   name: string
   phone: string
+  secondContactName: string | null
+  secondContactPhone: string | null
   lineId: string | null
   idNumber: string | null
   address: string | null
@@ -49,6 +51,8 @@ export default function CustomerEditPage({
   const [form, setForm] = useState({
     name: "",
     phone: "",
+    secondContactName: "",
+    secondContactPhone: "",
     lineId: "",
     idNumber: "",
     address: "",
@@ -72,6 +76,8 @@ export default function CustomerEditPage({
         setForm({
           name: data.name,
           phone: data.phone,
+          secondContactName: data.secondContactName ?? "",
+          secondContactPhone: data.secondContactPhone ?? "",
           lineId: data.lineId ?? "",
           idNumber: data.idNumber ?? "",
           address: data.address ?? "",
@@ -85,6 +91,9 @@ export default function CustomerEditPage({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // 第二聯絡人必填（與新增/自助建檔一致）
+    if (!form.secondContactName.trim()) { setError("請填寫第二聯絡人姓名"); return }
+    if (!form.secondContactPhone.trim()) { setError("請填寫第二聯絡人電話"); return }
     setLoading(true)
     setError("")
     try {
@@ -94,6 +103,8 @@ export default function CustomerEditPage({
         body: JSON.stringify({
           name: form.name,
           phone: form.phone,
+          secondContactName: form.secondContactName.trim(),
+          secondContactPhone: form.secondContactPhone.trim(),
           lineId: form.lineId || null,
           idNumber: form.idNumber || null,
           address: form.address || null,
@@ -171,6 +182,29 @@ export default function CustomerEditPage({
                   id="phone"
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="secondContactName">第二聯絡人姓名 *</Label>
+                <Input
+                  id="secondContactName"
+                  placeholder="第二聯絡人姓名"
+                  value={form.secondContactName}
+                  onChange={(e) => setForm({ ...form, secondContactName: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="secondContactPhone">第二聯絡人電話 *</Label>
+                <Input
+                  id="secondContactPhone"
+                  placeholder="09xx-xxx-xxx"
+                  value={form.secondContactPhone}
+                  onChange={(e) => setForm({ ...form, secondContactPhone: e.target.value })}
                   required
                 />
               </div>
