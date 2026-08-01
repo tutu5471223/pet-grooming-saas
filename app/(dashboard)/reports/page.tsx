@@ -239,6 +239,10 @@ async function getIncomeData(shopId: string, fromDate: Date, toDate: Date) {
         boardingRecord: {
           select: { pet: { select: { name: true, customer: { select: { name: true } } } } },
         },
+        // 包月/儲值等收入沒有 grooming/boarding 紀錄，改用 payment 直接關聯的
+        // 寵物與包月方案，才能在「項目/寵物」欄顯示內容。
+        pet: { select: { name: true, customer: { select: { name: true } } } },
+        monthlyPlan: { select: { name: true } },
         customer: { select: { name: true } },
       },
       orderBy: { paidAt: "desc" },
@@ -273,13 +277,29 @@ async function getIncomeData(shopId: string, fromDate: Date, toDate: Date) {
     let type = "其他"
     if (p.groomingRecord) type = "美容"
     else if (p.boardingRecord) type = "住宿"
-    const petName = p.groomingRecord?.pet?.name ?? p.boardingRecord?.pet?.name ?? "—"
-    const customerName = p.groomingRecord?.pet?.customer?.name ?? p.boardingRecord?.pet?.customer?.name ?? p.customer?.name ?? "—"
+    else if (p.billingType === "MONTHLY_PLAN" || p.monthlyPlanId) type = "包月"
+    else if (p.billingType === "CREDIT") type = "儲值"
+    const petName =
+      p.groomingRecord?.pet?.name ??
+      p.boardingRecord?.pet?.name ??
+      p.pet?.name ??
+      null
+    // 包月/儲值等沒有美容或住宿紀錄的收入，項目欄改顯示寵物名（含方案名）；
+    // 若連寵物都沒有，退回方案名或計費類型，避免整欄空白。
+    const itemLabel = petName
+      ? (p.monthlyPlan?.name ? `${petName}（${p.monthlyPlan.name}）` : petName)
+      : (p.monthlyPlan?.name ?? BILLING_TYPE_LABELS[p.billingType] ?? "—")
+    const customerName =
+      p.groomingRecord?.pet?.customer?.name ??
+      p.boardingRecord?.pet?.customer?.name ??
+      p.pet?.customer?.name ??
+      p.customer?.name ??
+      "—"
     rows.push({
       id: p.id,
       date: new Date(p.paidAt!),
       type,
-      petOrItem: petName,
+      petOrItem: itemLabel,
       customer: customerName,
       amount: p.amount,
       refundedAmount: p.refundedAmount ?? 0,
