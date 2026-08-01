@@ -119,16 +119,24 @@ export default function NewAppointmentPage() {
 
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([])
 
-  const [form, setForm] = useState({
-    type: "GROOMING",
-    scheduledAt: "",
-    staffId: "",
-    source: "WALK_IN",
-    notes: "",
-    duration: "",
-    estimatedCost: "",
-    boardingCheckOut: "",
-    boardingRoomId: "",
+  const [form, setForm] = useState(() => {
+    // 預設預約時間 = 今天 10:00（本地時區）。用 lazy 初始化，取代原本在
+    // mount effect 內同步 setForm 的寫法，行為（初始值）不變。
+    const now = new Date()
+    now.setHours(10, 0, 0, 0)
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const scheduledAt = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
+    return {
+      type: "GROOMING",
+      scheduledAt,
+      staffId: "",
+      source: "WALK_IN",
+      notes: "",
+      duration: "",
+      estimatedCost: "",
+      boardingCheckOut: "",
+      boardingRoomId: "",
+    }
   })
 
   const [submitting, setSubmitting] = useState(false)
@@ -141,6 +149,14 @@ export default function NewAppointmentPage() {
       .then((r) => r.json())
       .then((st: Staff[]) => setStaffList(st))
       .catch(() => {})
+  }, [])
+
+  // 還原（帶入）所選寵物。以 useCallback 提供穩定引用，讓它能安全地在下方
+  // 載入資料的 effect 中被呼叫並列入其相依陣列（宣告於使用之前）。
+  const restorePet = useCallback((pet: PetResult) => {
+    setSelectedPet(pet)
+    setSelectedPetId(pet.id)
+    setPetSearch(`${pet.name}（${pet.breed ?? pet.species}）- ${pet.customer.name}`)
   }, [])
 
   // Load base data
@@ -181,7 +197,7 @@ export default function NewAppointmentPage() {
     // Re-fetch staff when window gains focus (user added staff in another tab)
     window.addEventListener("focus", fetchStaff)
     return () => window.removeEventListener("focus", fetchStaff)
-  }, [fetchStaff])
+  }, [fetchStaff, restorePet])
 
   // Load rooms when switching to BOARDING
   useEffect(() => {
@@ -190,6 +206,10 @@ export default function NewAppointmentPage() {
     }
   }, [form.type, rooms.length])
 
+  /* eslint-disable react-hooks/set-state-in-effect --
+     以下 effect 需在相依變化時更新衍生 state：抓取寵物的包月方案與定價、
+     依所選服務自動計算費用與時長（仍允許使用者手動覆蓋）。這些是刻意的
+     副作用同步，重構會改變既有互動行為，故在此範圍內關閉該規則。 */
   // Fetch active monthly plans when pet changes
   useEffect(() => {
     if (!selectedPetId) { setActivePlans([]); setPaymentMethod("SINGLE"); setSelectedPlanId(""); return }
@@ -251,15 +271,7 @@ export default function NewAppointmentPage() {
     const days = Math.max(1, differenceInDays(new Date(form.boardingCheckOut), new Date(form.scheduledAt)))
     setForm((f) => ({ ...f, estimatedCost: String(days * room.dailyRate) }))
   }, [form.boardingRoomId, form.scheduledAt, form.boardingCheckOut, form.type, rooms])
-
-  // Default scheduledAt = today 10:00
-  useEffect(() => {
-    const now = new Date()
-    now.setHours(10, 0, 0, 0)
-    const pad = (n: number) => String(n).padStart(2, "0")
-    const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
-    setForm((f) => ({ ...f, scheduledAt: local }))
-  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Pet search debounce
   const searchPets = useCallback(async (q: string) => {
@@ -274,12 +286,6 @@ export default function NewAppointmentPage() {
     const t = setTimeout(() => searchPets(petSearch), 200)
     return () => clearTimeout(t)
   }, [petSearch, searchPets])
-
-  function restorePet(pet: PetResult) {
-    setSelectedPet(pet)
-    setSelectedPetId(pet.id)
-    setPetSearch(`${pet.name}（${pet.breed ?? pet.species}）- ${pet.customer.name}`)
-  }
 
   function selectPet(pet: PetResult) {
     restorePet(pet)
