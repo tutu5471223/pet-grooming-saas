@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { format } from "date-fns"
-import { Building2, Users, Clock, Shield, ToggleLeft, ToggleRight, ChevronLeft } from "lucide-react"
+import { Users, Clock, Shield, ToggleLeft, ToggleRight, ChevronLeft } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -43,30 +43,51 @@ export default function AdminShopDetailPage() {
   const [extendDays, setExtendDays] = useState("7")
   const [acting, setActing] = useState(false)
   const [message, setMessage] = useState("")
+  const [isError, setIsError] = useState(false)
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
     const res = await fetch(`/api/admin/shops/${id}`)
     if (res.ok) setShop(await res.json())
     setLoading(false)
-  }
+  }, [id])
 
-  useEffect(() => { load() }, [id])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 首次載入 / 切換店家時抓取資料
+    load()
+  }, [load])
 
   async function doAction(action: string, extra?: Record<string, unknown>) {
     setActing(true)
     setMessage("")
-    const res = await fetch(`/api/admin/shops/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, ...extra }),
-    })
-    const data = await res.json()
-    setActing(false)
-    if (data.success) {
+    setIsError(false)
+    try {
+      const res = await fetch(`/api/admin/shops/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...extra }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.success) {
+        // 明確顯示失敗原因，避免「點了沒反應」的靜默失敗。
+        setIsError(true)
+        setMessage(
+          data.error
+            ? `操作失敗：${data.error}`
+            : `操作失敗（HTTP ${res.status} ${res.statusText}）`
+        )
+        return
+      }
       setMessage("操作成功！")
       await load()
       setTimeout(() => setMessage(""), 3000)
+    } catch (e) {
+      // 網路錯誤 / 回應非 JSON 等——一律讓使用者看得到，並在 finally 解除 acting。
+      setIsError(true)
+      setMessage(e instanceof Error ? `操作失敗：${e.message}` : "操作失敗，請稍後再試")
+    } finally {
+      // 關鍵：無論成功或拋錯都要重置，否則 acting 卡 true 會鎖死所有按鈕。
+      setActing(false)
     }
   }
 
@@ -95,7 +116,15 @@ export default function AdminShopDetailPage() {
       </div>
 
       {message && (
-        <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{message}</div>
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            isError
+              ? "bg-red-50 border-red-200 text-red-700"
+              : "bg-green-50 border-green-200 text-green-700"
+          }`}
+        >
+          {message}
+        </div>
       )}
 
       <div className="grid gap-4 lg:grid-cols-4">
