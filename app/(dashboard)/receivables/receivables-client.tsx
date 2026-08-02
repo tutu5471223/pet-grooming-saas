@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { CollectPaymentDialog } from "@/components/dashboard/collect-payment-dialog"
+import { RefundButton } from "@/app/(dashboard)/reports/refund-button"
 
 interface ARPayment {
   id: string
@@ -26,6 +27,7 @@ interface ARPayment {
   billingType: string
   paymentMethod: string | null
   status: string
+  refundedAmount: number
   notes: string | null
   paidAt: string | null
   createdAt: string
@@ -240,7 +242,7 @@ export function ReceivablesClient({ items, status, role, isSuperAdmin }: Props) 
                                 <CheckCircle2 className="h-4 w-4" />
                               </Button>
                             )}
-                            {isOwner && (
+                            {status === "PENDING" && isOwner && (
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -250,6 +252,13 @@ export function ReceivablesClient({ items, status, role, isSuperAdmin }: Props) 
                               >
                                 <Ban className="h-4 w-4" />
                               </Button>
+                            )}
+                            {status === "PAID" && isOwner && (
+                              <RefundButton
+                                paymentId={item.id}
+                                originalAmount={item.amount}
+                                refundedAmount={item.refundedAmount ?? 0}
+                              />
                             )}
                             {status === "PENDING" && isOwner && (
                               <Button

@@ -6,9 +6,30 @@ import { readJson, z } from "@/lib/validation"
 import { sendEmail } from "@/lib/email"
 
 const adminShopActionSchema = z.object({
-  action: z.enum(["extend_trial", "set_active", "disable_shop", "enable_shop", "approve_shop"]),
+  action: z.enum(["extend_trial", "set_active", "set_expiry", "disable_shop", "enable_shop", "approve_shop"]),
   days: z.number().int().positive().max(3650).optional(),
+  // set_expiry：指定到期日（"yyyy-MM-dd"）
+  expiryDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式需為 yyyy-MM-dd").optional(),
 })
+
+/**
+ * 續約/延期後恢復店家：解除停權（SUSPENDED→ACTIVE）、清除待清除標記與停權時間，
+ * 並清掉緩衝期提醒旗標，讓到期生命週期能重新計算。用 updateMany 避免 shop 不存在時拋錯。
+ */
+async function reactivateShop(shopId: string) {
+  await prisma.shop.updateMany({
+    where: { id: shopId },
+    data: { suspendedAt: null, dataPurgeMarkedAt: null },
+  })
+  await prisma.shop.updateMany({
+    where: { id: shopId, status: "SUSPENDED" },
+    data: { status: "ACTIVE" },
+  })
+  await prisma.subscription.updateMany({
+    where: { shopId },
+    data: { graceReminderSentAt: null },
+  })
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -64,6 +85,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           data: { currentPeriodEnd: newEnd, status: "TRIAL" },
         })
       }
+      // 延長試用 → 解除可能的停權/待清除
+      await reactivateShop(id)
       await writeAudit({
         shopId: id,
         userId: session.user.id,
@@ -71,6 +94,56 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         resource: "shop",
         resourceId: id,
         detail: { days },
+      })
+      return NextResponse.json({ success: true })
+    }
+
+    if (body.action === "set_expiry") {
+      if (!body.expiryDate) {
+        return NextResponse.json({ error: "請提供到期日期" }, { status: 400 })
+      }
+      // 以台北時區當日 23:59:59 作為到期時點
+      const expiry = new Date(`${body.expiryDate}T23:59:59+08:00`)
+      if (isNaN(expiry.getTime())) {
+        return NextResponse.json({ error: "到期日期格式錯誤" }, { status: 400 })
+      }
+
+      const existing = await prisma.subscription.findFirst({
+        where: { shopId: id },
+        orderBy: { createdAt: "desc" },
+      })
+      if (existing) {
+        // 設為「有期限」訂閱：status=TRIAL 讓到期後 isExpired 生效、cron 能處理到期流程。
+        await prisma.subscription.updateMany({
+          where: { shopId: id },
+          data: { currentPeriodEnd: expiry, status: "TRIAL" },
+        })
+      } else {
+        const plan = await prisma.plan.findFirst({ orderBy: { price: "asc" } })
+        if (!plan) {
+          return NextResponse.json({ error: "系統尚無任何方案，無法建立訂閱" }, { status: 400 })
+        }
+        await prisma.subscription.create({
+          data: {
+            shopId: id,
+            planId: plan.id,
+            status: "TRIAL",
+            currentPeriodStart: new Date(),
+            currentPeriodEnd: expiry,
+          },
+        })
+      }
+
+      // 到期日在未來 → 解除停權/待清除
+      if (expiry > new Date()) await reactivateShop(id)
+
+      await writeAudit({
+        shopId: id,
+        userId: session.user.id,
+        action: "admin.shop.set_expiry",
+        resource: "shop",
+        resourceId: id,
+        detail: { expiryDate: body.expiryDate },
       })
       return NextResponse.json({ success: true })
     }
@@ -141,6 +214,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         select: { id: true, status: true, planId: true, currentPeriodEnd: true },
       })
       console.log(`[admin.set_active] shopId=${id} 更新後訂閱(${after.length})=`, JSON.stringify(after))
+
+      // 永久訂閱 → 一併解除可能的停權/待清除標記
+      await reactivateShop(id)
 
       await writeAudit({
         shopId: id,

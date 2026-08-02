@@ -35,13 +35,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const existing = await prisma.payment.findFirst({ where: { id, shopId } })
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    // Void: mark as VOIDED regardless of current status (idempotent, no side effects).
+    // Void: 只允許作廢「未收款(PENDING)」的帳款。已收款(PAID/REFUNDED)不可直接
+    // 作廢——那會抹掉已發生的金流（儲值扣抵/收入/點數）而不回退，帳會不平；
+    // 已收款要沖銷請改用「退款」流程。
     if (markingVoided) {
       if (existing.status === "VOIDED") {
-        return NextResponse.json(existing)
+        return NextResponse.json(existing) // idempotent
+      }
+      if (existing.status !== "PENDING") {
+        return NextResponse.json(
+          { error: "只有未收款的帳款可以作廢；已收款請改用退款功能", code: "VOID_ONLY_PENDING" },
+          { status: 400 }
+        )
       }
       await prisma.payment.updateMany({
-        where: { id, shopId },
+        where: { id, shopId, status: "PENDING" },
         data: { status: "VOIDED" },
       })
       await writeAudit({

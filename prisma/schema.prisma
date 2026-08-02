@@ -33,6 +33,9 @@ model Shop {
   status             String   @default("ACTIVE")
   registeredAt       DateTime @default(now())
   onboardingDone     Boolean  @default(true)
+  // 訂閱到期生命週期：停權時間（用於計算 90 天保留期）、資料標記待清除時間。
+  suspendedAt        DateTime?
+  dataPurgeMarkedAt  DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -467,6 +470,8 @@ model Subscription {
   currentPeriodStart DateTime @default(now())
   currentPeriodEnd   DateTime
   cancelAtPeriodEnd  Boolean  @default(false)
+  // 到期進入緩衝期時，已寄出續約提醒 Email 的時間（冪等，避免每日重寄）。
+  graceReminderSentAt DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

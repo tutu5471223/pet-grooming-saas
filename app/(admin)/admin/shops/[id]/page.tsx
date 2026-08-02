@@ -41,6 +41,7 @@ export default function AdminShopDetailPage() {
   const [shop, setShop] = useState<ShopDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [extendDays, setExtendDays] = useState("7")
+  const [expiryDate, setExpiryDate] = useState("")
   const [acting, setActing] = useState(false)
   const [message, setMessage] = useState("")
   const [isError, setIsError] = useState(false)
@@ -192,6 +193,25 @@ export default function AdminShopDetailPage() {
                   <span className="flex items-center text-sm text-gray-500">天</span>
                   <Button size="sm" onClick={() => doAction("extend_trial", { days: Number(extendDays) })} disabled={acting}>
                     延長
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-2">設定特定到期日</p>
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { if (expiryDate) doAction("set_expiry", { expiryDate }) }}
+                    disabled={acting || !expiryDate}
+                  >
+                    設定
                   </Button>
                 </div>
               </div>
