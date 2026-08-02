@@ -38,6 +38,12 @@ function addDays(d: Date, n: number): Date {
   return r
 }
 
+// 台北時區的日期字串 "yyyy-MM-dd"，用來以「日曆日」為單位比較到期，
+// 避免受「當天 23:59 到期」與 cron 執行時刻的精確時間差影響（選項 B）。
+function taipeiDateStr(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei" }).format(d)
+}
+
 const RENEW_EMAIL = (shopName: string, expiry: Date, graceEnd: Date) => `
   <p>您好，「${shopName}」：</p>
   <p>您的 PetOS71 訂閱已於 <strong>${expiry.toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" })}</strong> 到期。</p>
@@ -78,8 +84,13 @@ export async function GET(req: NextRequest) {
     if (!sub) continue // 沒有訂閱紀錄的店家不納入到期處理
 
     const expiry = sub.currentPeriodEnd
+    const graceEndDate = addDays(expiry, GRACE_DAYS)
     const isPermanent = sub.status === "ACTIVE" && expiry >= PERMANENT_THRESHOLD
-    const stillValid = isPermanent || expiry > now
+    // 選項 B：以台北「日期」為準——到期日當天即視為到期並進入緩衝期。
+    const todayStr = taipeiDateStr(now)
+    const expiryStr = taipeiDateStr(expiry)
+    const graceEndStr = taipeiDateStr(graceEndDate)
+    const stillValid = isPermanent || todayStr < expiryStr
 
     // ── 有效（永久或未到期）：若店家先前被停權/標記，恢復之（backstop）──
     if (stillValid) {
@@ -103,18 +114,16 @@ export async function GET(req: NextRequest) {
       continue
     }
 
-    // ── 已到期 ──
-    const graceEnd = addDays(expiry, GRACE_DAYS)
-
-    if (now < graceEnd) {
-      // 緩衝期內：寄一次續約提醒（冪等，靠 graceReminderSentAt）
+    // ── 已到期（今天 ≥ 到期日，以台北日期計）──
+    if (todayStr < graceEndStr) {
+      // 緩衝期內（到期日 ≤ 今天 < 到期日+3天）：寄一次續約提醒（冪等，靠 graceReminderSentAt）
       if (!sub.graceReminderSentAt) {
         if (shop.email) {
           try {
             await sendEmail({
               to: shop.email,
               subject: "【PetOS71】您的訂閱已到期，請儘快續約",
-              html: RENEW_EMAIL(shop.name, expiry, graceEnd),
+              html: RENEW_EMAIL(shop.name, expiry, graceEndDate),
             })
           } catch (e) {
             console.error(`[CRON/subscription-lifecycle] 寄信失敗 shopId=${shop.id}`, e)
