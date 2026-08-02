@@ -82,10 +82,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // 永久訂閱要「移除所有用量限制」，因此必須把訂閱綁到「無限制方案」，
       // 而不是只改 status —— 否則訂閱仍掛在「免費試用」方案上，用量限制沒解除、
       // 前端「方案」欄仍顯示 plan.name「免費試用」。取用量無限制、價格最高的方案。
-      const unlimitedPlan = await prisma.plan.findFirst({
+      let unlimitedPlan = await prisma.plan.findFirst({
         where: { maxCustomers: { gte: UNLIMITED } },
         orderBy: { price: "desc" },
       })
+      if (!unlimitedPlan) {
+        // 系統沒有無限制方案 → 建立一個隱藏方案（isActive:false，不會出現在
+        // 定價頁或 /api/plans 列表），確保「永久訂閱」一定能真正解除所有限制。
+        unlimitedPlan = await prisma.plan.create({
+          data: {
+            name: "永久（無限制）",
+            price: 0,
+            maxCustomers: UNLIMITED,
+            maxPets: UNLIMITED,
+            maxStaff: UNLIMITED,
+            isActive: false,
+          },
+        })
+        console.log(`[admin.set_active] 系統無無限制方案，已建立隱藏方案 id=${unlimitedPlan.id}`)
+      }
 
       // (2) 更新前：查詢該店家目前所有訂閱
       const before = await prisma.subscription.findMany({
@@ -101,32 +116,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         data: {
           status: "ACTIVE",
           currentPeriodEnd: farFuture,
-          ...(unlimitedPlan ? { planId: unlimitedPlan.id } : {}),
+          planId: unlimitedPlan.id,
         },
       })
-      console.log(`[admin.set_active] updateMany 更新筆數=${updated.count} planId=${unlimitedPlan?.id ?? "(未變更)"}`)
+      console.log(`[admin.set_active] updateMany 更新筆數=${updated.count} planId=${unlimitedPlan.id}`)
 
       if (updated.count === 0) {
-        // 完全沒有訂閱紀錄才建立一筆：優先用無限制方案，否則退回最低價方案；
-        // 若系統無任何方案則明確報錯，不再靜默回成功。
-        const plan = unlimitedPlan ?? await prisma.plan.findFirst({ orderBy: { price: "asc" } })
-        if (!plan) {
-          console.log(`[admin.set_active] shopId=${id} 無任何訂閱且系統無方案，無法建立`)
-          return NextResponse.json(
-            { error: "系統尚無任何方案，無法建立永久訂閱" },
-            { status: 400 }
-          )
-        }
+        // 完全沒有訂閱紀錄才建立一筆，直接綁到無限制方案（上面已保證存在）。
         const created = await prisma.subscription.create({
           data: {
             shopId: id,
-            planId: plan.id,
+            planId: unlimitedPlan.id,
             status: "ACTIVE",
             currentPeriodStart: new Date(),
             currentPeriodEnd: farFuture,
           },
         })
-        console.log(`[admin.set_active] shopId=${id} 原無訂閱，已建立新訂閱 id=${created.id} planId=${plan.id}`)
+        console.log(`[admin.set_active] shopId=${id} 原無訂閱，已建立新訂閱 id=${created.id} planId=${unlimitedPlan.id}`)
       }
 
       // (4) 更新後：重新查詢確認實際落庫的狀態與方案
