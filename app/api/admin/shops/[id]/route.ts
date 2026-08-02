@@ -77,27 +77,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     if (body.action === "set_active") {
       const farFuture = new Date("2099-01-01")
+      const UNLIMITED = 999999
+
+      // 永久訂閱要「移除所有用量限制」，因此必須把訂閱綁到「無限制方案」，
+      // 而不是只改 status —— 否則訂閱仍掛在「免費試用」方案上，用量限制沒解除、
+      // 前端「方案」欄仍顯示 plan.name「免費試用」。取用量無限制、價格最高的方案。
+      const unlimitedPlan = await prisma.plan.findFirst({
+        where: { maxCustomers: { gte: UNLIMITED } },
+        orderBy: { price: "desc" },
+      })
 
       // (2) 更新前：查詢該店家目前所有訂閱
       const before = await prisma.subscription.findMany({
         where: { shopId: id },
-        select: { id: true, shopId: true, status: true, currentPeriodEnd: true, createdAt: true },
+        select: { id: true, shopId: true, status: true, planId: true, currentPeriodEnd: true, createdAt: true },
       })
-      console.log(`[admin.set_active] shopId=${id} 更新前訂閱(${before.length})=`, JSON.stringify(before))
+      console.log(`[admin.set_active] shopId=${id} 更新前訂閱(${before.length})=`, JSON.stringify(before), `無限制方案=${unlimitedPlan?.id ?? "無"}`)
 
-      // (3) 一次更新該店家「所有」訂閱，而非只 findFirst 一筆。若店家有多筆訂閱
-      // （或 createdAt 相同、排序不穩定），只更新一筆可能剛好不是前端顯示的那筆，
-      // 造成「回傳成功但狀態沒變」。updateMany 確保全部設為 ACTIVE。
+      // (3) 一次更新該店家「所有」訂閱：狀態設 ACTIVE、到期日永久，並綁定無限制
+      // 方案（若系統有的話）。updateMany 避免多筆／排序不穩時只改到某一筆。
       const updated = await prisma.subscription.updateMany({
         where: { shopId: id },
-        data: { status: "ACTIVE", currentPeriodEnd: farFuture },
+        data: {
+          status: "ACTIVE",
+          currentPeriodEnd: farFuture,
+          ...(unlimitedPlan ? { planId: unlimitedPlan.id } : {}),
+        },
       })
-      console.log(`[admin.set_active] updateMany 更新筆數=${updated.count}`)
+      console.log(`[admin.set_active] updateMany 更新筆數=${updated.count} planId=${unlimitedPlan?.id ?? "(未變更)"}`)
 
       if (updated.count === 0) {
-        // 完全沒有訂閱紀錄才建立一筆永久訂閱；若系統無任何方案則明確報錯，
-        // 不再靜默回成功。
-        const plan = await prisma.plan.findFirst({ orderBy: { price: "asc" } })
+        // 完全沒有訂閱紀錄才建立一筆：優先用無限制方案，否則退回最低價方案；
+        // 若系統無任何方案則明確報錯，不再靜默回成功。
+        const plan = unlimitedPlan ?? await prisma.plan.findFirst({ orderBy: { price: "asc" } })
         if (!plan) {
           console.log(`[admin.set_active] shopId=${id} 無任何訂閱且系統無方案，無法建立`)
           return NextResponse.json(
@@ -117,10 +129,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         console.log(`[admin.set_active] shopId=${id} 原無訂閱，已建立新訂閱 id=${created.id} planId=${plan.id}`)
       }
 
-      // (4) 更新後：重新查詢確認實際落庫的狀態
+      // (4) 更新後：重新查詢確認實際落庫的狀態與方案
       const after = await prisma.subscription.findMany({
         where: { shopId: id },
-        select: { id: true, status: true, currentPeriodEnd: true },
+        select: { id: true, status: true, planId: true, currentPeriodEnd: true },
       })
       console.log(`[admin.set_active] shopId=${id} 更新後訂閱(${after.length})=`, JSON.stringify(after))
 
@@ -130,7 +142,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         action: "admin.shop.set_active",
         resource: "shop",
         resourceId: id,
-        detail: { updatedCount: updated.count },
+        detail: { updatedCount: updated.count, planId: unlimitedPlan?.id },
       })
       return NextResponse.json({ success: true, updated: updated.count })
     }
