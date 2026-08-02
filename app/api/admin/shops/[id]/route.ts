@@ -47,6 +47,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!parsed.ok) return parsed.response
   const body = parsed.data
 
+  console.log(`[admin.shop.PATCH] 收到請求 shopId=${id} action=${body.action}${body.days ? ` days=${body.days}` : ""}`)
+
   try {
     if (body.action === "extend_trial") {
       const days = body.days ?? 7
@@ -75,24 +77,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     if (body.action === "set_active") {
       const farFuture = new Date("2099-01-01")
-      // 一次更新該店家「所有」訂閱，而非只 findFirst 一筆。若店家有多筆訂閱
+
+      // (2) 更新前：查詢該店家目前所有訂閱
+      const before = await prisma.subscription.findMany({
+        where: { shopId: id },
+        select: { id: true, shopId: true, status: true, currentPeriodEnd: true, createdAt: true },
+      })
+      console.log(`[admin.set_active] shopId=${id} 更新前訂閱(${before.length})=`, JSON.stringify(before))
+
+      // (3) 一次更新該店家「所有」訂閱，而非只 findFirst 一筆。若店家有多筆訂閱
       // （或 createdAt 相同、排序不穩定），只更新一筆可能剛好不是前端顯示的那筆，
       // 造成「回傳成功但狀態沒變」。updateMany 確保全部設為 ACTIVE。
       const updated = await prisma.subscription.updateMany({
         where: { shopId: id },
         data: { status: "ACTIVE", currentPeriodEnd: farFuture },
       })
+      console.log(`[admin.set_active] updateMany 更新筆數=${updated.count}`)
+
       if (updated.count === 0) {
         // 完全沒有訂閱紀錄才建立一筆永久訂閱；若系統無任何方案則明確報錯，
         // 不再靜默回成功。
         const plan = await prisma.plan.findFirst({ orderBy: { price: "asc" } })
         if (!plan) {
+          console.log(`[admin.set_active] shopId=${id} 無任何訂閱且系統無方案，無法建立`)
           return NextResponse.json(
             { error: "系統尚無任何方案，無法建立永久訂閱" },
             { status: 400 }
           )
         }
-        await prisma.subscription.create({
+        const created = await prisma.subscription.create({
           data: {
             shopId: id,
             planId: plan.id,
@@ -101,7 +114,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             currentPeriodEnd: farFuture,
           },
         })
+        console.log(`[admin.set_active] shopId=${id} 原無訂閱，已建立新訂閱 id=${created.id} planId=${plan.id}`)
       }
+
+      // (4) 更新後：重新查詢確認實際落庫的狀態
+      const after = await prisma.subscription.findMany({
+        where: { shopId: id },
+        select: { id: true, status: true, currentPeriodEnd: true },
+      })
+      console.log(`[admin.set_active] shopId=${id} 更新後訂閱(${after.length})=`, JSON.stringify(after))
+
       await writeAudit({
         shopId: id,
         userId: session.user.id,
