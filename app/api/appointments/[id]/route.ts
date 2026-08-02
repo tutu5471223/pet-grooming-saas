@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
 import { sendLineMessage } from "@/lib/line"
 import { readJson, z, money } from "@/lib/validation"
+import { round2 } from "@/lib/money"
 
 // M8: known appointment status values (mirrors the UI STATUS_OPTIONS).
 const VALID_STATUSES = ["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"]
@@ -103,19 +104,47 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       })
 
-      // Auto-deduct monthly plan session on first completion (atomic + capped).
-      if (enteringCompleted && existing.petMonthlyPlanId) {
-        const plan = await tx.petMonthlyPlan.findFirst({
-          where: { id: existing.petMonthlyPlanId, shopId },
-          select: { maxSessions: true },
-        })
-        if (plan) {
-          // Guarded increment: the `usedSessions < maxSessions` predicate is the
-          // upper-bound cap and makes the write a no-op once the plan is exhausted.
-          await tx.petMonthlyPlan.updateMany({
-            where: { id: existing.petMonthlyPlanId, shopId, usedSessions: { lt: plan.maxSessions } },
-            data: { usedSessions: { increment: 1 } },
+      // 首次進入 COMPLETED 的結算。COMPLETED 是終態（見 STATUS_TRANSITIONS），
+      // 只會發生一次；而「開始美容」路徑是由 grooming POST 直接把預約標 COMPLETED
+      // （不經此 endpoint），因此兩條路徑互斥、不會重複建立應收。
+      if (enteringCompleted) {
+        if (existing.petMonthlyPlanId) {
+          // 包月：扣一次（atomic + capped），已預付故不另計現金應收。
+          const plan = await tx.petMonthlyPlan.findFirst({
+            where: { id: existing.petMonthlyPlanId, shopId },
+            select: { maxSessions: true },
           })
+          if (plan) {
+            await tx.petMonthlyPlan.updateMany({
+              where: { id: existing.petMonthlyPlanId, shopId, usedSessions: { lt: plan.maxSessions } },
+              data: { usedSessions: { increment: 1 } },
+            })
+          }
+        } else {
+          // 非包月：依「本次或先前已修改」的預估金額建立一筆 PENDING 應收，
+          // 否則直接「標記完成」不會產生任何應收帳款（就是這次的 bug）。
+          const finalCost = round2(
+            body.estimatedCost !== undefined ? (body.estimatedCost ?? 0) : (existing.estimatedCost ?? 0)
+          )
+          if (finalCost > 0) {
+            const pet = await tx.pet.findFirst({
+              where: { id: existing.petId, shopId },
+              select: { customerId: true },
+            })
+            if (pet) {
+              await tx.payment.create({
+                data: {
+                  shopId,
+                  customerId: pet.customerId,
+                  petId: existing.petId,
+                  amount: finalCost,
+                  status: "PENDING",
+                  billingType: "SINGLE",
+                  notes: "預約完成應收",
+                },
+              })
+            }
+          }
         }
       }
     })
