@@ -75,23 +75,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     if (body.action === "set_active") {
       const farFuture = new Date("2099-01-01")
-      const existing = await prisma.subscription.findFirst({
+      // 一次更新該店家「所有」訂閱，而非只 findFirst 一筆。若店家有多筆訂閱
+      // （或 createdAt 相同、排序不穩定），只更新一筆可能剛好不是前端顯示的那筆，
+      // 造成「回傳成功但狀態沒變」。updateMany 確保全部設為 ACTIVE。
+      const updated = await prisma.subscription.updateMany({
         where: { shopId: id },
-        orderBy: { createdAt: "desc" },
+        data: { status: "ACTIVE", currentPeriodEnd: farFuture },
       })
-      if (existing) {
-        await prisma.subscription.update({
-          where: { id: existing.id },
-          data: { status: "ACTIVE", currentPeriodEnd: farFuture },
-        })
-      } else {
-        // No subscription exists; create a permanent one with the first available plan
+      if (updated.count === 0) {
+        // 完全沒有訂閱紀錄才建立一筆永久訂閱；若系統無任何方案則明確報錯，
+        // 不再靜默回成功。
         const plan = await prisma.plan.findFirst({ orderBy: { price: "asc" } })
-        if (plan) {
-          await prisma.subscription.create({
-            data: { shopId: id, planId: plan.id, status: "ACTIVE", currentPeriodStart: new Date(), currentPeriodEnd: farFuture },
-          })
+        if (!plan) {
+          return NextResponse.json(
+            { error: "系統尚無任何方案，無法建立永久訂閱" },
+            { status: 400 }
+          )
         }
+        await prisma.subscription.create({
+          data: {
+            shopId: id,
+            planId: plan.id,
+            status: "ACTIVE",
+            currentPeriodStart: new Date(),
+            currentPeriodEnd: farFuture,
+          },
+        })
       }
       await writeAudit({
         shopId: id,
@@ -99,8 +108,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         action: "admin.shop.set_active",
         resource: "shop",
         resourceId: id,
+        detail: { updatedCount: updated.count },
       })
-      return NextResponse.json({ success: true })
+      return NextResponse.json({ success: true, updated: updated.count })
     }
 
     if (body.action === "disable_shop") {

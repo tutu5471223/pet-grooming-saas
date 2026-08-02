@@ -47,7 +47,8 @@ export default function AdminShopDetailPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const res = await fetch(`/api/admin/shops/${id}`)
+    // no-store：確保每次都讀最新 DB 狀態，不讀瀏覽器對 GET 的快取。
+    const res = await fetch(`/api/admin/shops/${id}`, { cache: "no-store" })
     if (res.ok) setShop(await res.json())
     setLoading(false)
   }, [id])
