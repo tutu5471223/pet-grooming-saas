@@ -61,9 +61,11 @@ export async function GET(req: NextRequest) {
   const now = new Date()
   let remindersSent = 0, suspended = 0, purgeMarked = 0, reactivated = 0
 
-  // 撈所有店家 + 其最新一筆訂閱（排除系統管理店）。
+  // 只處理正常營運(ACTIVE)與已停用(SUSPENDED)的店家；待審核(PENDING)、
+  // 已拒絕(REJECTED)、已合併(MERGED)等不納入訂閱到期流程（避免待審核店家
+  // 因試用到期被誤停用）。排除系統管理店。
   const shops = await prisma.shop.findMany({
-    where: { id: { not: "system" } },
+    where: { id: { not: "system" }, status: { in: ["ACTIVE", "SUSPENDED"] } },
     select: {
       id: true,
       name: true,

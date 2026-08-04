@@ -120,9 +120,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               data: { usedSessions: { increment: 1 } },
             })
           }
-        } else {
-          // 非包月：依「本次或先前已修改」的預估金額建立一筆 PENDING 應收，
-          // 否則直接「標記完成」不會產生任何應收帳款（就是這次的 bug）。
+        } else if (existing.type !== "BOARDING") {
+          // 非包月、且非住宿（住宿走 checkin/checkout 自行結算收款，避免雙重應收）：
+          // 依「本次或先前已修改」的預估金額建立一筆 PENDING 應收，否則直接
+          // 「標記完成」不會產生任何應收帳款。
           const finalCost = round2(
             body.estimatedCost !== undefined ? (body.estimatedCost ?? 0) : (existing.estimatedCost ?? 0)
           )
