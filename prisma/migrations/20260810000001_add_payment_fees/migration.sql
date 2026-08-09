@@ -1,0 +1,5 @@
+-- 付款方式手續費設定與每筆收款的手續費快照（皆有預設值，相容既有資料）
+ALTER TABLE "Shop" ADD COLUMN "paymentFeeRates" TEXT;
+ALTER TABLE "Payment" ADD COLUMN "feeRate" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Payment" ADD COLUMN "feeAmount" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Payment" ADD COLUMN "netAmount" DOUBLE PRECISION;

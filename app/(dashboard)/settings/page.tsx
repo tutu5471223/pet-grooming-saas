@@ -5,7 +5,7 @@ import { Lock } from "lucide-react"
 import { prisma } from "@/lib/prisma"
 import { headers } from "next/headers"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Scissors, Home, Star, FileText, Users, CreditCard, Link2, Bell, Zap, MessageCircle, ScanLine } from "lucide-react"
+import { Scissors, Home, Star, FileText, Users, CreditCard, Link2, Bell, Zap, MessageCircle, ScanLine, Percent } from "lucide-react"
 import { ServiceManager } from "@/components/settings/service-manager"
 import { RoomManager } from "@/components/settings/room-manager"
 import { ContractTemplateEditor } from "@/components/settings/contract-template-editor"
@@ -18,6 +18,7 @@ import { ReminderSettings } from "@/components/settings/reminder-settings"
 import { SubscriptionInfo } from "@/components/settings/subscription-info"
 import { LineSettings } from "@/components/settings/line-settings"
 import { OcrSettings } from "@/components/settings/ocr-settings"
+import { PaymentFeeSettings } from "@/components/settings/payment-fee-settings"
 
 function AccessDeniedTab() {
   return (
@@ -35,7 +36,7 @@ async function getSettingsData(shopId: string) {
       contractTemplate: true, logoUrl: true, businessHoursStart: true,
       businessHoursEnd: true, restDays: true, reminderTemplate: true,
       lineChannelToken: true, lineChannelId: true, lineChannelSecret: true,
-      ocrKeywords: true, status: true, onboardingDone: true,
+      ocrKeywords: true, status: true, onboardingDone: true, paymentFeeRates: true,
     }}),
     prisma.service.findMany({ where: { shopId }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
     prisma.boardingRoom.findMany({ where: { shopId }, orderBy: { name: "asc" } }),
@@ -112,6 +113,9 @@ export default async function SettingsPage() {
           <TabsTrigger value="ocr" className="gap-1.5">
             <ScanLine className="h-4 w-4" /> OCR 設定
           </TabsTrigger>
+          <TabsTrigger value="fees" className="gap-1.5">
+            <Percent className="h-4 w-4" /> 手續費
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="services" className="mt-4">
@@ -178,6 +182,12 @@ export default async function SettingsPage() {
         <TabsContent value="ocr" className="mt-4">
           {isAdmin ? (
             <OcrSettings shopId={shopId} initialKeywords={shop?.ocrKeywords ?? null} />
+          ) : <AccessDeniedTab />}
+        </TabsContent>
+
+        <TabsContent value="fees" className="mt-4">
+          {isAdmin ? (
+            <PaymentFeeSettings shopId={shopId} initialRates={shop?.paymentFeeRates ?? null} />
           ) : <AccessDeniedTab />}
         </TabsContent>
       </Tabs>

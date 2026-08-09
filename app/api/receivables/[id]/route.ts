@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { writeAudit } from "@/lib/audit"
 import { requireRole, requirePermission } from "@/lib/auth-guard"
 import { readJson, z } from "@/lib/validation"
+import { parseFeeRates, computeFee, PAYMENT_METHOD_LABELS, PLATFORM_FEE_EXPENSE_CATEGORY, type PaymentMethod } from "@/lib/payment-fee"
 
 const patchSchema = z.object({
   status: z.enum(["PENDING", "PAID", "VOIDED"]).optional(),
@@ -78,19 +79,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         )
       }
 
+      // 手續費快照（依付款方式費率）
+      const method = body.paymentMethod ?? existing.paymentMethod ?? null
+      const shopCfg = await prisma.shop.findUnique({
+        where: { id: shopId },
+        select: { paymentFeeRates: true },
+      })
+      const fee = computeFee(existing.amount, method, parseFeeRates(shopCfg?.paymentFeeRates))
+
       // Atomic PENDING -> PAID for SINGLE receivables only.
       const flip = await prisma.payment.updateMany({
         where: { id, shopId, status: "PENDING" },
         data: {
           status: "PAID",
           paidAt: new Date(),
-          paymentMethod: body.paymentMethod ?? existing.paymentMethod ?? undefined,
+          paymentMethod: method ?? undefined,
+          feeRate: fee.feeRate,
+          feeAmount: fee.feeAmount,
+          netAmount: fee.netAmount,
           ...(body.notes !== undefined ? { notes: body.notes } : {}),
         },
       })
       if (flip.count !== 1) {
         // Already processed by another request.
         return NextResponse.json({ error: "Not found or already paid" }, { status: 409 })
+      }
+
+      // 手續費 > 0 → 自動記一筆「平台手續費」支出。
+      if (fee.feeAmount > 0) {
+        await prisma.expense.create({
+          data: {
+            shopId,
+            date: new Date(),
+            category: PLATFORM_FEE_EXPENSE_CATEGORY,
+            description: `${PAYMENT_METHOD_LABELS[method as PaymentMethod] ?? method ?? ""} 手續費 ${fee.feeRate}%（收款 #${id.slice(-6)}）`,
+            amount: fee.feeAmount,
+            createdBy: userId,
+          },
+        })
       }
 
       const payment = await prisma.payment.findFirst({

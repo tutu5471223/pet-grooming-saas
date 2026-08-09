@@ -5,6 +5,7 @@ import { requireAuth } from "@/lib/auth-guard"
 import { differenceInDays } from "date-fns"
 import { readJson, shortText, longText, z } from "@/lib/validation"
 import { round2 } from "@/lib/money"
+import { parseFeeRates, computeFee, PLATFORM_FEE_EXPENSE_CATEGORY } from "@/lib/payment-fee"
 
 const patchSchema = z.object({
   status: shortText.optional(),
@@ -15,7 +16,7 @@ const patchSchema = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAuth()
   if (!guard.ok) return guard.response
-  const { shopId } = guard.ctx
+  const { shopId, userId } = guard.ctx
 
   const { id } = await params
 
@@ -51,6 +52,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       totalCost = round2(baseCost + addOnTotal + adjustment)
     }
 
+    // 手續費快照（住宿退房固定以現金結算）
+    const shopCfg = await prisma.shop.findUnique({
+      where: { id: shopId },
+      select: { paymentFeeRates: true },
+    })
+    const feeRates = parseFeeRates(shopCfg?.paymentFeeRates)
+
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.boardingRecord.update({
         where: { id },
@@ -78,6 +86,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
         // Create payment record on checkout
         if (totalCost && totalCost > 0 && !record.payment) {
+          const fee = computeFee(round2(totalCost), "CASH", feeRates)
           await tx.payment.create({
             data: {
               shopId,
@@ -86,10 +95,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               amount: round2(totalCost),
               billingType: "SINGLE",
               paymentMethod: "CASH",
+              feeRate: fee.feeRate,
+              feeAmount: fee.feeAmount,
+              netAmount: fee.netAmount,
               status: "PAID",
               paidAt: new Date(),
             },
           })
+          if (fee.feeAmount > 0) {
+            await tx.expense.create({
+              data: {
+                shopId,
+                date: new Date(),
+                category: PLATFORM_FEE_EXPENSE_CATEGORY,
+                description: `現金 手續費 ${fee.feeRate}%（住宿收款）`,
+                amount: fee.feeAmount,
+                createdBy: userId,
+              },
+            })
+          }
         }
       }
 

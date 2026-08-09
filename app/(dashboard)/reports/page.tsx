@@ -269,6 +269,7 @@ async function getIncomeData(shopId: string, fromDate: Date, toDate: Date) {
     isPayment: boolean
     billingType: string
     paymentMethod: string
+    feeAmount: number
   }
 
   const rows: IncomeRow[] = []
@@ -307,17 +308,20 @@ async function getIncomeData(shopId: string, fromDate: Date, toDate: Date) {
       isPayment: true,
       billingType: BILLING_TYPE_LABELS[p.billingType] ?? p.billingType,
       paymentMethod: PAYMENT_METHOD_LABELS[p.paymentMethod ?? ""] ?? p.paymentMethod ?? "—",
+      feeAmount: p.feeAmount ?? 0,
     })
   }
   for (const s of sales) {
     const items = s.items.map((i) => i.product.name).join("、") || "商品"
-    rows.push({ id: s.id, date: new Date(s.createdAt), type: "商品銷售", petOrItem: items, customer: s.customer?.name ?? "—", amount: s.total, refundedAmount: 0, status: "PAID", isPayment: false, billingType: "—", paymentMethod: "—" })
+    rows.push({ id: s.id, date: new Date(s.createdAt), type: "商品銷售", petOrItem: items, customer: s.customer?.name ?? "—", amount: s.total, refundedAmount: 0, status: "PAID", isPayment: false, billingType: "—", paymentMethod: "—", feeAmount: 0 })
   }
 
   rows.sort((a, b) => b.date.getTime() - a.date.getTime())
-  // M1: net total = original amounts minus any refunds applied
-  const total = rows.reduce((s, r) => s + r.amount - r.refundedAmount, 0)
-  return { rows, total }
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  // 毛額 = 收款金額 − 退款；手續費總額 = 各筆手續費加總；實收淨額 = 毛額 − 手續費。
+  const grossTotal = rows.reduce((s, r) => s + r.amount - r.refundedAmount, 0)
+  const feeTotal = rows.reduce((s, r) => s + r.feeAmount, 0)
+  return { rows, total: r2(grossTotal), feeTotal: r2(feeTotal), netTotal: r2(grossTotal - feeTotal) }
 }
 
 // ─── Expense (Tab 3) data ─────────────────────────────────────────────────────
@@ -745,6 +749,27 @@ export default async function ReportsPage({
               </CardContent>
             </Card>
           ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <p className="text-xs text-gray-500">毛額（收款總額）</p>
+                    <p className="text-xl font-bold text-gray-900">{formatCurrency(incomeData.total)}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <p className="text-xs text-gray-500">手續費總額</p>
+                    <p className="text-xl font-bold text-red-600">−{formatCurrency(incomeData.feeTotal)}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <p className="text-xs text-gray-500">實收淨額</p>
+                    <p className="text-xl font-bold text-green-700">{formatCurrency(incomeData.netTotal)}</p>
+                  </CardContent>
+                </Card>
+              </div>
             <Card>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -812,6 +837,7 @@ export default async function ReportsPage({
                 </div>
               </CardContent>
             </Card>
+            </>
           )}
         </div>
       )}

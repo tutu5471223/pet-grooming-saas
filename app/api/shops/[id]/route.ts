@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { sanitizeContractHtml } from "@/lib/sanitize"
 import { writeAudit } from "@/lib/audit"
 import { readJson, shortText, longText, z } from "@/lib/validation"
+import { normalizeFeeRates } from "@/lib/payment-fee"
 
 // Non-strict: validate the known editable fields; extra keys are ignored and
 // only the explicitly-picked fields below are ever written to the DB.
@@ -24,6 +25,8 @@ const shopUpdateSchema = z.object({
   lineChannelSecret: shortText.max(1000).optional().nullable(),
   lineChannelToken: shortText.max(1000).optional().nullable(),
   ocrKeywords: longText.optional().nullable(),
+  // 付款方式手續費率（物件：{CASH,CARD,TRANSFER,LINE_PAY} 百分比）
+  paymentFeeRates: z.record(z.string(), z.number()).optional().nullable(),
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -70,6 +73,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           body.lineChannelToken !== undefined ? (body.lineChannelToken ?? null) : undefined,
         ocrKeywords:
           body.ocrKeywords !== undefined ? (body.ocrKeywords ?? null) : undefined,
+        paymentFeeRates:
+          body.paymentFeeRates !== undefined && body.paymentFeeRates !== null
+            ? JSON.stringify(normalizeFeeRates(body.paymentFeeRates))
+            : undefined,
       },
     })
 

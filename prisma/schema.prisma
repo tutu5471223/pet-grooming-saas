@@ -30,6 +30,8 @@ model Shop {
   lineChannelSecret  String?
   lineChannelToken   String?
   ocrKeywords        String?
+  // 各付款方式手續費率（JSON，百分比）：{"CASH":0,"CARD":2,"TRANSFER":0,"LINE_PAY":3}
+  paymentFeeRates    String?
   status             String   @default("ACTIVE")
   registeredAt       DateTime @default(now())
   onboardingDone     Boolean  @default(true)
@@ -331,6 +333,10 @@ model Payment {
   refundedAmount   Float           @default(0)
   billingType      String          @default("SINGLE")
   paymentMethod    String?
+  // 付款手續費（收款當下依付款方式費率快照計算）：費率(%)、手續費金額、實收淨額。
+  feeRate          Float           @default(0)
+  feeAmount        Float           @default(0)
+  netAmount        Float?
   status           String          @default("PENDING")
   notes            String?
   paidAt           DateTime?
