@@ -1,12 +1,13 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-04)
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireAuth } from "@/lib/auth-guard"
+import { requirePermission } from "@/lib/auth-guard"
 import { round2 } from "@/lib/money"
 import { startOfDay, endOfDay, parseISO } from "date-fns"
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAuth()
+  // PERM-2: 同 /api/reports —— 單日收入明細一樣要有報表權限才能看。
+  const guard = await requirePermission("reports")
   if (!guard.ok) return guard.response
   const { shopId } = guard.ctx
 

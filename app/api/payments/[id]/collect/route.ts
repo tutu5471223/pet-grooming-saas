@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAuth } from "@/lib/auth-guard"
 import { round2, parseMoney, MAX_MONEY } from "@/lib/money"
-import { parseFeeRates, computeFee, PAYMENT_METHOD_LABELS, PLATFORM_FEE_EXPENSE_CATEGORY, type PaymentMethod } from "@/lib/payment-fee"
+import { computeFee, isPaymentMethod, isInternalOffset } from "@/lib/payment-fee"
+import { loadFeeContext, recordFeeExpense } from "@/lib/payment-fee-server"
 
 export async function POST(
   req: NextRequest,
@@ -41,6 +42,17 @@ export async function POST(
   }
   if (billingType === "NEW_MONTHLY_PLAN" && (!paymentMethod || !monthlyPlanData)) {
     return NextResponse.json({ error: "請填寫包月方案資料及付款方式" }, { status: 400 })
+  }
+
+  // FEE-1: 付款方式必須是白名單值，否則報表分組與手續費費率查表都會被任意
+  // 字串汙染。CREDIT / MONTHLY_PLAN 是內部沖抵（扣儲值、扣次），沒有外部
+  // 金流商，因此一律忽略 client 送來的付款方式 —— 否則只要在請求裡塞
+  // paymentMethod=CARD，就會對一筆根本沒刷卡的沖抵收手續費並產生假支出。
+  const effectiveMethod: string | null = isInternalOffset(billingType)
+    ? null
+    : (paymentMethod ?? null)
+  if (effectiveMethod !== null && !isPaymentMethod(effectiveMethod)) {
+    return NextResponse.json({ error: "付款方式不正確" }, { status: 400 })
   }
 
   // Validate the only client-supplied money inputs (new monthly plan pricing).
@@ -102,12 +114,8 @@ export async function POST(
     const customerId = payment.customerId
     const petId = payment.petId
 
-    // 付款方式手續費率（收款當下快照）
-    const shopCfg = await prisma.shop.findUnique({
-      where: { id: shopId },
-      select: { paymentFeeRates: true },
-    })
-    const feeRates = parseFeeRates(shopCfg?.paymentFeeRates)
+    // 付款方式手續費率（收款當下快照）+ 可安全寫入支出的建立者 ID
+    const { rates: feeRates, creatorId } = await loadFeeContext(shopId, userId)
 
     const result = await prisma.$transaction(async (tx) => {
       let finalAmount = round2(payment.amount)
@@ -167,8 +175,8 @@ export async function POST(
 
       finalAmount = round2(finalAmount)
 
-      // 依付款方式計算手續費快照（儲值/包月扣抵無 paymentMethod → 費率 0）。
-      const fee = computeFee(finalAmount, paymentMethod, feeRates)
+      // 依付款方式計算手續費快照（儲值/包月扣抵 effectiveMethod=null → 費率 0）。
+      const fee = computeFee(finalAmount, effectiveMethod, feeRates)
 
       // FIN-2: atomic PENDING->PAID gate. Only one caller can flip it; a
       // second concurrent collect matches 0 rows and aborts.
@@ -177,7 +185,7 @@ export async function POST(
         data: {
           status: "PAID",
           billingType,
-          paymentMethod: paymentMethod ?? null,
+          paymentMethod: effectiveMethod,
           monthlyPlanId: resolvedMonthlyPlanId,
           amount: finalAmount,
           feeRate: fee.feeRate,
@@ -191,18 +199,13 @@ export async function POST(
       }
 
       // 手續費 > 0 → 自動記一筆「平台手續費」支出，供支出/營收報表統計。
-      if (fee.feeAmount > 0) {
-        await tx.expense.create({
-          data: {
-            shopId,
-            date: new Date(),
-            category: PLATFORM_FEE_EXPENSE_CATEGORY,
-            description: `${PAYMENT_METHOD_LABELS[paymentMethod as PaymentMethod] ?? paymentMethod ?? ""} 手續費 ${fee.feeRate}%（收款 #${id.slice(-6)}）`,
-            amount: fee.feeAmount,
-            createdBy: userId,
-          },
-        })
-      }
+      await recordFeeExpense(tx, {
+        shopId,
+        creatorId,
+        fee,
+        paymentMethod: effectiveMethod,
+        source: `收款 #${id.slice(-6)}`,
+      })
 
       // Side effects run ONLY after the gate succeeds.
       if (billingType === "CREDIT") {

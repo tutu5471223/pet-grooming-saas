@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma"
 import { readJson, z, positiveMoney } from "@/lib/validation"
 import { round2 } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
+import { computeFee } from "@/lib/payment-fee"
+import { loadFeeContext, recordFeeExpense } from "@/lib/payment-fee-server"
 
 const topupSchema = z.object({
   amount: positiveMoney,
@@ -42,6 +44,13 @@ export async function POST(
     const methodLabel = method === "CARD" ? "刷卡" : "現金"
     const reason = `儲值充值（${methodLabel}）${notes ? `：${notes}` : ""}`
 
+    // FEE-3: 儲值加值是真正的外部收款（現金或刷卡），手續費就發生在這一刻。
+    // 之後的扣抵走 billingType=CREDIT、沒有付款方式、費率 0，所以如果這裡
+    // 不算，刷卡儲值的手續費會完全沒有入帳。
+    const payMethod = method === "CARD" ? "CARD" : "CASH"
+    const { rates, creatorId } = await loadFeeContext(shopId, userId)
+    const fee = computeFee(topupAmount, payMethod, rates)
+
     const updated = await prisma.$transaction(async (tx) => {
       const updatedCustomer = await tx.customer.update({
         where: { id },
@@ -50,6 +59,13 @@ export async function POST(
       })
       await tx.storedValueHistory.create({
         data: { customerId: id, shopId, amount: topupAmount, reason },
+      })
+      await recordFeeExpense(tx, {
+        shopId,
+        creatorId,
+        fee,
+        paymentMethod: payMethod,
+        source: "儲值充值",
       })
       await writeAudit({
         shopId,

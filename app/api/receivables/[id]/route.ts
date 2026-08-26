@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma"
 import { writeAudit } from "@/lib/audit"
 import { requireRole, requirePermission } from "@/lib/auth-guard"
 import { readJson, z } from "@/lib/validation"
-import { parseFeeRates, computeFee, PAYMENT_METHOD_LABELS, PLATFORM_FEE_EXPENSE_CATEGORY, type PaymentMethod } from "@/lib/payment-fee"
+import { computeFee, isPaymentMethod } from "@/lib/payment-fee"
+import { loadFeeContext, recordFeeExpense } from "@/lib/payment-fee-server"
 
 const patchSchema = z.object({
   status: z.enum(["PENDING", "PAID", "VOIDED"]).optional(),
@@ -79,44 +80,48 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         )
       }
 
-      // 手續費快照（依付款方式費率）
+      // FEE-2: 手續費要算得出來，收款當下就必須知道付款方式。以前這條路徑
+      // 允許不帶 paymentMethod 直接標記已收款，結果是同一筆應收走「收款」
+      // 對話框會扣手續費、走這裡卻永遠 0 元，且付款方式留白。
       const method = body.paymentMethod ?? existing.paymentMethod ?? null
-      const shopCfg = await prisma.shop.findUnique({
-        where: { id: shopId },
-        select: { paymentFeeRates: true },
-      })
-      const fee = computeFee(existing.amount, method, parseFeeRates(shopCfg?.paymentFeeRates))
-
-      // Atomic PENDING -> PAID for SINGLE receivables only.
-      const flip = await prisma.payment.updateMany({
-        where: { id, shopId, status: "PENDING" },
-        data: {
-          status: "PAID",
-          paidAt: new Date(),
-          paymentMethod: method ?? undefined,
-          feeRate: fee.feeRate,
-          feeAmount: fee.feeAmount,
-          netAmount: fee.netAmount,
-          ...(body.notes !== undefined ? { notes: body.notes } : {}),
-        },
-      })
-      if (flip.count !== 1) {
-        // Already processed by another request.
-        return NextResponse.json({ error: "Not found or already paid" }, { status: 409 })
+      if (!isPaymentMethod(method)) {
+        return NextResponse.json(
+          { error: "請選擇付款方式（現金／刷卡／轉帳／LINE Pay）", code: "PAYMENT_METHOD_REQUIRED" },
+          { status: 400 }
+        )
       }
 
-      // 手續費 > 0 → 自動記一筆「平台手續費」支出。
-      if (fee.feeAmount > 0) {
-        await prisma.expense.create({
+      const { rates, creatorId } = await loadFeeContext(shopId, userId)
+      const fee = computeFee(existing.amount, method, rates)
+
+      // Atomic PENDING -> PAID for SINGLE receivables only. 手續費支出與狀態
+      // 翻轉放同一個 transaction，避免收款成立卻漏記手續費。
+      const flipped = await prisma.$transaction(async (tx) => {
+        const flip = await tx.payment.updateMany({
+          where: { id, shopId, status: "PENDING" },
           data: {
-            shopId,
-            date: new Date(),
-            category: PLATFORM_FEE_EXPENSE_CATEGORY,
-            description: `${PAYMENT_METHOD_LABELS[method as PaymentMethod] ?? method ?? ""} 手續費 ${fee.feeRate}%（收款 #${id.slice(-6)}）`,
-            amount: fee.feeAmount,
-            createdBy: userId,
+            status: "PAID",
+            paidAt: new Date(),
+            paymentMethod: method,
+            feeRate: fee.feeRate,
+            feeAmount: fee.feeAmount,
+            netAmount: fee.netAmount,
+            ...(body.notes !== undefined ? { notes: body.notes } : {}),
           },
         })
+        if (flip.count !== 1) return false
+        await recordFeeExpense(tx, {
+          shopId,
+          creatorId,
+          fee,
+          paymentMethod: method,
+          source: `收款 #${id.slice(-6)}`,
+        })
+        return true
+      })
+      if (!flipped) {
+        // Already processed by another request.
+        return NextResponse.json({ error: "Not found or already paid" }, { status: 409 })
       }
 
       const payment = await prisma.payment.findFirst({
@@ -140,6 +145,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     // Non-status edits (paymentMethod / notes), or no-op status writes that do
     // not constitute a PENDING -> PAID transition. We never flip PAID -> PENDING here.
+    if (body.paymentMethod !== undefined && !isPaymentMethod(body.paymentMethod)) {
+      return NextResponse.json({ error: "付款方式不正確" }, { status: 400 })
+    }
     const payment = await prisma.payment.update({
       where: { id },
       data: {

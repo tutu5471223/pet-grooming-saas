@@ -12,6 +12,19 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   LINE_PAY: "LINE Pay",
 }
 
+/** 是否為系統認可的付款方式（避免任意字串寫進 Payment.paymentMethod 汙染報表）。 */
+export function isPaymentMethod(v: unknown): v is PaymentMethod {
+  return typeof v === "string" && (PAYMENT_METHODS as readonly string[]).includes(v)
+}
+
+/**
+ * 內部沖抵型的計費方式：儲值扣抵、包月扣次。這兩種不經外部收款管道（沒有
+ * 金流商），因此不得帶付款方式、也不該產生手續費。
+ */
+export function isInternalOffset(billingType: string | null | undefined): boolean {
+  return billingType === "CREDIT" || billingType === "MONTHLY_PLAN"
+}
+
 export type FeeRates = Record<PaymentMethod, number>
 
 export const DEFAULT_FEE_RATES: FeeRates = { CASH: 0, CARD: 0, TRANSFER: 0, LINE_PAY: 0 }
@@ -60,10 +73,9 @@ export function computeFee(
   paymentMethod: string | null | undefined,
   rates: FeeRates
 ): { feeRate: number; feeAmount: number; netAmount: number } {
-  const rate =
-    paymentMethod && (paymentMethod as PaymentMethod) in rates
-      ? rates[paymentMethod as PaymentMethod]
-      : 0
+  // 用白名單判斷，不可用 `in`：`"constructor" in rates` 會命中 Object.prototype，
+  // 讓 rate 變成函式、feeAmount 算出 NaN 並寫進資料庫。
+  const rate = isPaymentMethod(paymentMethod) ? clampRate(rates[paymentMethod]) : 0
   const base = round2(amount)
   const feeAmount = round2((base * rate) / 100)
   const netAmount = round2(base - feeAmount)

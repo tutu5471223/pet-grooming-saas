@@ -82,26 +82,12 @@ export function ReceivablesClient({ items, status, role, isSuperAdmin }: Props) 
     setSearchTimer(t)
   }
 
-  async function markPaid(item: ARPayment) {
-    if (item.billingType === "CREDIT" || item.billingType === "MONTHLY_PLAN") {
-      setCollectTarget({ id: item.id, amount: item.amount })
-      return
-    }
-    const res = await fetch(`/api/receivables/${item.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "PAID" }),
-    })
-    if (!res.ok) {
-      if (res.status === 422) {
-        setCollectTarget({ id: item.id, amount: item.amount })
-        return
-      }
-      const data = await res.json().catch(() => ({}))
-      alert(data.error || "操作失敗，請稍後再試")
-      return
-    }
-    router.refresh()
+  // 所有應收都走收款對話框（與營收報表的「收款」一致）。以前 SINGLE 會走
+  // PATCH 直接標記已收款，那條路沒有付款方式、不算手續費、也不給點數，
+  // 同一筆帳款的結果會因為從哪個畫面收而不同；而且該 API 限 OWNER，
+  // 店員按了只會拿到 403。
+  function markPaid(item: ARPayment) {
+    setCollectTarget({ id: item.id, amount: item.amount })
   }
 
   async function deleteAR(id: string) {

@@ -1,13 +1,15 @@
 // SECURITY: 多店家隔離 - shopId 由 Session 強制帶入
 import { NextRequest, NextResponse } from "next/server"
-import { requireAuth, requireRole } from "@/lib/auth-guard"
+import { requirePermission, requireRole } from "@/lib/auth-guard"
 import { prisma } from "@/lib/prisma"
 import { round2, MAX_MONEY } from "@/lib/money"
 import { writeAudit } from "@/lib/audit"
 import { startOfMonth, endOfMonth } from "date-fns"
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAuth()
+  // PERM-1: 支出是敏感財務資料。/expenses 頁面已限 OWNER 或有 expenses 權限的
+  // 員工，但 API 之前只擋登入，任何店員 curl 一下就能把整間店的支出撈光。
+  const guard = await requirePermission("expenses")
   if (!guard.ok) return guard.response
   const { shopId } = guard.ctx
 

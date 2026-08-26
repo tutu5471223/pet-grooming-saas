@@ -5,7 +5,8 @@ import { requireAuth } from "@/lib/auth-guard"
 import { differenceInDays } from "date-fns"
 import { readJson, shortText, longText, z } from "@/lib/validation"
 import { round2 } from "@/lib/money"
-import { parseFeeRates, computeFee, PLATFORM_FEE_EXPENSE_CATEGORY } from "@/lib/payment-fee"
+import { computeFee } from "@/lib/payment-fee"
+import { loadFeeContext, recordFeeExpense } from "@/lib/payment-fee-server"
 
 const patchSchema = z.object({
   status: shortText.optional(),
@@ -53,11 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     // 手續費快照（住宿退房固定以現金結算）
-    const shopCfg = await prisma.shop.findUnique({
-      where: { id: shopId },
-      select: { paymentFeeRates: true },
-    })
-    const feeRates = parseFeeRates(shopCfg?.paymentFeeRates)
+    const { rates: feeRates, creatorId } = await loadFeeContext(shopId, userId)
 
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.boardingRecord.update({
@@ -102,18 +99,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               paidAt: new Date(),
             },
           })
-          if (fee.feeAmount > 0) {
-            await tx.expense.create({
-              data: {
-                shopId,
-                date: new Date(),
-                category: PLATFORM_FEE_EXPENSE_CATEGORY,
-                description: `現金 手續費 ${fee.feeRate}%（住宿收款）`,
-                amount: fee.feeAmount,
-                createdBy: userId,
-              },
-            })
-          }
+          await recordFeeExpense(tx, {
+            shopId,
+            creatorId,
+            fee,
+            paymentMethod: "CASH",
+            source: "住宿收款",
+          })
         }
       }
 

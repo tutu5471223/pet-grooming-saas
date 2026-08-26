@@ -14,6 +14,7 @@ import {
   ShoppingBag,
   Settings,
   ClipboardList,
+  ShieldCheck,
   MoreHorizontal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -63,12 +64,19 @@ export function BottomTabBar() {
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/")
   const visibleMore = moreItems.filter((i) => canSee(i, isOwner, perms))
+  // 超級管理後台在側邊欄有入口，手機底部導覽也補上，否則超管在手機上進不去。
+  if (session?.user?.isSuperAdmin) {
+    visibleMore.push({ href: "/superadmin", icon: ShieldCheck, label: "超級管理", ownerOnly: false })
+  }
   const moreActive = visibleMore.some((i) => isActive(i.href))
+  // 權限最小的店員（無 reports/expenses/settings）只剩商品與銷售，仍有內容；
+  // 但若未來項目都被過濾掉，就不要留一個點開是空白的「更多」。
+  const showMore = visibleMore.length > 0
 
   return (
     <>
       {/* 「更多」彈出選單（僅手機/平板） */}
-      {moreOpen && (
+      {moreOpen && showMore && (
         <div className="hidden max-lg:block">
           <button
             aria-label="關閉更多選單"
@@ -118,8 +126,10 @@ export function BottomTabBar() {
           )
         })}
         {/* 更多 */}
+        {showMore && (
         <button
           type="button"
+          aria-expanded={moreOpen}
           onClick={() => setMoreOpen((o) => !o)}
           className={cn(
             "flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors",
@@ -129,6 +139,7 @@ export function BottomTabBar() {
           <MoreHorizontal className={cn("h-5 w-5", moreOpen || moreActive ? "text-indigo-600" : "text-gray-400")} />
           更多
         </button>
+        )}
       </nav>
     </>
   )

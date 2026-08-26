@@ -1,7 +1,7 @@
 // SECURITY: 已通過多店家隔離稽核 (2026-05-03)
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireAuth } from "@/lib/auth-guard"
+import { requirePermission } from "@/lib/auth-guard"
 import { round2 } from "@/lib/money"
 import {
   startOfMonth,
@@ -14,7 +14,9 @@ import {
 } from "date-fns"
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAuth()
+  // PERM-2: 營收數字對齊 /reports 頁面的權限（OWNER 或 reports 權限），
+  // 否則沒有報表權限的店員仍可直接打 API 取得全店營收。
+  const guard = await requirePermission("reports")
   if (!guard.ok) return guard.response
   const { shopId } = guard.ctx
 
