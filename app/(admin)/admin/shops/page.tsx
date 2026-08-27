@@ -93,7 +93,16 @@ export default function AdminShopsPage() {
                   const statusInfo = sub ? (STATUS_LABELS[sub.status] ?? { label: sub.status, color: "bg-gray-100 text-gray-700" }) : null
                   return (
                     <tr key={shop.id} className="hover:bg-gray-50/50">
-                      <td className="py-3 pr-4 font-medium text-gray-900">{shop.name}</td>
+                      <td className="py-3 pr-4">
+                        {/* 店名本身就能點進詳情，不用再往右找「操作」欄 */}
+                        <Link
+                          href={`/admin/shops/${shop.id}`}
+                          title={`查看「${shop.name}」的店家詳情`}
+                          className="font-medium text-indigo-700 underline decoration-indigo-200 underline-offset-2 hover:text-indigo-800 hover:decoration-indigo-500"
+                        >
+                          {shop.name}
+                        </Link>
+                      </td>
                       <td className="py-3 pr-4 font-mono text-xs text-gray-500">{shop.id}</td>
                       <td className="py-3 pr-4 text-gray-700">{sub?.plan.name ?? "—"}</td>
                       <td className="py-3 pr-4">

@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Search, CheckCircle2, XCircle, ShieldOff, ShieldCheck, RefreshCw, Store, AlertCircle, Trash2 } from "lucide-react"
+import Link from "next/link"
+import { Search, CheckCircle2, XCircle, ShieldOff, ShieldCheck, RefreshCw, Store, AlertCircle, Trash2, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -160,7 +161,14 @@ export default function SuperAdminPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <Store className="h-4 w-4 text-yellow-600 shrink-0" />
-                            <p className="font-semibold text-gray-900">{shop.name}</p>
+                            <Link
+                              href={`/admin/shops/${shop.id}`}
+                              title={`查看「${shop.name}」的店家詳情`}
+                              className="inline-flex items-center gap-0.5 font-semibold text-indigo-700 underline decoration-indigo-200 underline-offset-2 hover:text-indigo-800 hover:decoration-indigo-500"
+                            >
+                              {shop.name}
+                              <ChevronRight className="h-3.5 w-3.5" />
+                            </Link>
                             {shop.city && <span className="text-xs text-gray-500 bg-white rounded-full px-2 py-0.5 border">{shop.city}</span>}
                           </div>
                           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-600 mt-1">
@@ -240,7 +248,16 @@ export default function SuperAdminPage() {
                     return (
                       <tr key={shop.id}>
                         <td className="py-2.5">
-                          <p className="font-medium text-gray-900">{shop.name}</p>
+                          {/* 店名點進 /admin/shops/[id]：訂閱狀態、客人數、手動延長
+                              試用都在那頁，這裡原本完全沒有入口，只能手打網址。 */}
+                          <Link
+                            href={`/admin/shops/${shop.id}`}
+                            title={`查看「${shop.name}」的店家詳情`}
+                            className="inline-flex items-center gap-0.5 font-medium text-indigo-700 underline decoration-indigo-200 underline-offset-2 hover:text-indigo-800 hover:decoration-indigo-500"
+                          >
+                            {shop.name}
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </Link>
                           <p className="text-xs text-gray-400 font-mono">{shop.id}</p>
                         </td>
                         <td className="py-2.5 text-gray-700">
