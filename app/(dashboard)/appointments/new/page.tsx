@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Plus, X, Clock, Calendar, Home, AlertCircle } from "lucide-react"
+import { ArrowLeft, Plus, X, Clock, Calendar, Home, AlertCircle, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -511,7 +511,16 @@ export default function NewAppointmentPage() {
               <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2.5 text-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="font-medium text-gray-900">{selectedPet.name}</span>
+                    {/* 開新分頁：這裡是填到一半的表單，同頁跳走會把已填內容丟掉 */}
+                    <Link
+                      href={`/customers/${selectedPet.customerId}/pets/${selectedPet.id}`}
+                      target="_blank"
+                      title="開啟寵物資料頁"
+                      className="inline-flex items-center gap-1 font-medium text-gray-900 hover:text-indigo-600 hover:underline"
+                    >
+                      {selectedPet.name}
+                      <ExternalLink className="h-3 w-3 text-indigo-400" />
+                    </Link>
                     <span className="text-gray-500 ml-1.5">{selectedPet.breed ?? selectedPet.species}</span>
                   </div>
                   <div className="text-right text-xs text-gray-500">

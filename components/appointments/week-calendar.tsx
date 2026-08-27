@@ -206,9 +206,12 @@ export function WeekCalendar({ appointments, weekStart, shopName, shopPhone }: P
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm text-sm space-y-1.5">
           <div className="flex items-center justify-between">
             <p className="font-bold text-gray-900">
+              {/* 週視圖的格子本身要負責開這張詳情卡，不能再是連結，
+                  所以進寵物頁的入口放在這裡並明顯上色。 */}
               <Link
                 href={`/customers/${selected.pet.customer.id}/pets/${selected.pet.id}`}
-                className="hover:text-indigo-600 hover:underline"
+                title={`查看 ${selected.pet.name} 的寵物資料`}
+                className="text-indigo-700 underline decoration-indigo-200 underline-offset-2 hover:text-indigo-800 hover:decoration-indigo-500"
               >
                 {selected.pet.name}
               </Link>

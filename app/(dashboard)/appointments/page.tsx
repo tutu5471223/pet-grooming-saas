@@ -213,9 +213,12 @@ export default async function AppointmentsPage({
                       {/* Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
+                          {/* 用 indigo 上色，讓「可點進寵物頁」在手機上也看得出來
+                              —— 只靠 hover 變色的話，觸控裝置永遠不會顯示。 */}
                           <Link
                             href={`/customers/${apt.pet.customer.id}/pets/${apt.pet.id}`}
-                            className="font-semibold text-gray-900 hover:text-indigo-600 hover:underline"
+                            title={`查看 ${apt.pet.name} 的寵物資料`}
+                            className="font-semibold text-indigo-700 underline decoration-indigo-200 underline-offset-2 hover:text-indigo-800 hover:decoration-indigo-500"
                           >
                             {apt.pet.name}
                           </Link>
