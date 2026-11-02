@@ -209,7 +209,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    return NextResponse.json(updated)
+    // R6-H8: shop.lineChannelToken 只供上面推播使用，絕不能回傳給前端 ——
+    // 任何店員都能呼叫這支 API，而 LINE 設定在設定頁是限店主才看得到的。
+    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    return NextResponse.json({
+      ...updated,
+      shop: { name: updated.shop.name, phone: updated.shop.phone },
+    })
   } catch (error) {
     console.error("PATCH /api/appointments/[id]", error)
     return NextResponse.json({ error: "操作失敗，請稍後再試" }, { status: 500 })

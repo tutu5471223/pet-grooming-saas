@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requirePermission } from "@/lib/auth-guard"
 import { round2 } from "@/lib/money"
+import { REVENUE_PAYMENT_FILTER } from "@/lib/revenue"
 import {
   startOfMonth,
   endOfMonth,
@@ -52,8 +53,7 @@ export async function GET(req: NextRequest) {
     prisma.payment.aggregate({
       where: {
         shopId,
-        status: { in: ["PAID", "REFUNDED"] },
-        amount: { gte: 0 },
+        ...REVENUE_PAYMENT_FILTER,
         paidAt: { gte: monthStart, lte: monthEnd },
       },
       _sum: { amount: true, refundedAmount: true },
@@ -63,8 +63,7 @@ export async function GET(req: NextRequest) {
     prisma.payment.aggregate({
       where: {
         shopId,
-        status: { in: ["PAID", "REFUNDED"] },
-        amount: { gte: 0 },
+        ...REVENUE_PAYMENT_FILTER,
         paidAt: { gte: monthStart, lte: monthEnd },
         boardingRecordId: { not: null },
       },
@@ -81,8 +80,7 @@ export async function GET(req: NextRequest) {
           .aggregate({
             where: {
               shopId,
-              status: { in: ["PAID", "REFUNDED"] },
-              amount: { gte: 0 },
+              ...REVENUE_PAYMENT_FILTER,
               paidAt: { gte: s, lte: e },
             },
             _sum: { amount: true, refundedAmount: true },
@@ -98,8 +96,7 @@ export async function GET(req: NextRequest) {
       by: ["paymentMethod"],
       where: {
         shopId,
-        status: { in: ["PAID", "REFUNDED"] },
-        amount: { gte: 0 },
+        ...REVENUE_PAYMENT_FILTER,
         paidAt: { gte: monthStart, lte: monthEnd },
       },
       _sum: { amount: true, refundedAmount: true },
@@ -116,8 +113,7 @@ export async function GET(req: NextRequest) {
     prisma.payment.findMany({
       where: {
         shopId,
-        status: { in: ["PAID", "REFUNDED"] },
-        amount: { gte: 0 },
+        ...REVENUE_PAYMENT_FILTER,
         paidAt: { gte: monthStart, lte: endOfDay(effectiveEnd) },
       },
       select: { paidAt: true, amount: true, refundedAmount: true },

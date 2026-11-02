@@ -151,7 +151,10 @@ export function PetMonthlyPlanManager({
     if (!window.confirm("確定刪除此方案？")) return
     try {
       const res = await fetch(`/api/pets/${petId}/monthly-plans/${planId}`, { method: "DELETE" })
-      if (!res.ok) throw new Error("刪除失敗")
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(res.status === 403 ? "僅店主可刪除包月方案" : d.error || "刪除失敗")
+      }
       router.refresh()
     } catch (e) {
       alert(e instanceof Error ? e.message : "刪除失敗")

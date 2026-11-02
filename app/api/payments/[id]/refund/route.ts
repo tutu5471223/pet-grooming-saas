@@ -32,6 +32,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (!payment) {
         throw new Error("REFUND_NOT_FOUND")
       }
+      // R6-H2: 包月扣次只是消耗預付次數，沒有收進任何錢；對它退款會憑空付出
+      // 一筆現金退款。要退包月請針對「購買整包」那筆收款退款。
+      if (payment.billingType === "MONTHLY_PLAN") {
+        throw new Error("REFUND_PLAN_SESSION")
+      }
 
       const alreadyRefunded = round2(payment.refundedAmount ?? 0)
       const newRefundedTotal = round2(alreadyRefunded + amount)
@@ -140,6 +145,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const msg = error instanceof Error ? error.message : ""
     if (msg === "REFUND_NOT_FOUND") {
       return NextResponse.json({ error: "找不到付款紀錄" }, { status: 404 })
+    }
+    if (msg === "REFUND_PLAN_SESSION") {
+      return NextResponse.json(
+        { error: "包月扣次沒有實際收款，不可退款；如需退費請對購買包月的那筆收款退款" },
+        { status: 400 }
+      )
     }
     if (msg === "REFUND_EXCEEDS") {
       return NextResponse.json({ error: "退款金額不能超過原金額（含已退款）" }, { status: 400 })

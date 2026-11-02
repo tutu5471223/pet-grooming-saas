@@ -40,7 +40,17 @@ export async function PATCH(
   const newStatus = STATUS_MAP[action]
   if (!newStatus) return NextResponse.json({ error: "Invalid action" }, { status: 400 })
 
-  await prisma.shop.update({ where: { id }, data: { status: newStatus } })
+  // R6-H6: 手動停權清掉 suspendedAt —— 訂閱 cron 以「SUSPENDED 且有 suspendedAt」
+  // 判斷是「訂閱到期停權」並在續約後自動恢復；手動停權不能被 cron 自動解除。
+  // 手動恢復（activate/approve）也一併清掉，讓到期流程從乾淨狀態重新計算。
+  await prisma.shop.update({
+    where: { id },
+    data: {
+      status: newStatus,
+      ...(action === "suspend" || newStatus === "ACTIVE" ? { suspendedAt: null } : {}),
+      ...(newStatus === "ACTIVE" ? { dataPurgeMarkedAt: null } : {}),
+    },
+  })
 
   await writeAudit({
     shopId: id,

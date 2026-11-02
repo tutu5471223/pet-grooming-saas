@@ -2,13 +2,16 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAuth } from "@/lib/auth-guard"
-import { round2 } from "@/lib/money"
+import { hasPermission } from "@/lib/permissions"
+import { sumNetRevenue } from "@/lib/revenue"
 import { startOfMonth, endOfMonth, startOfDay, endOfDay, subMonths } from "date-fns"
 
 export async function GET() {
   const guard = await requireAuth()
   if (!guard.ok) return guard.response
-  const { shopId } = guard.ctx
+  const { shopId, role, permissions } = guard.ctx
+  // R6-H9: 營收只給 OWNER / reports 權限者（對齊 /api/reports 的 PERM-2）。
+  const canSeeRevenue = hasPermission(role, permissions, "reports")
 
   const today = new Date()
   const todayStart = startOfDay(today)
@@ -56,42 +59,23 @@ export async function GET() {
     //   sell 100, refund 100  -> 100 - 100 = 0
     //   sell 100, refund 30   -> 100 - 30  = 70
     //   no refund             -> 100 - 0   = 100
-    prisma.payment.aggregate({
-      where: {
-        shopId,
-        status: { in: ["PAID", "REFUNDED"] },
-        amount: { gte: 0 },
-        paidAt: { gte: monthStart, lte: monthEnd },
-      },
-      _sum: { amount: true, refundedAmount: true },
-    }),
+    canSeeRevenue ? sumNetRevenue(shopId, monthStart, monthEnd) : null,
 
     // 總客人數
     prisma.customer.count({ where: { shopId } }),
 
     // 過去6個月收入（圖表用）
-    Promise.all(
-      Array.from({ length: 6 }, (_, i) => {
-        const d = subMonths(today, 5 - i)
-        const s = startOfMonth(d)
-        const e = endOfMonth(d)
-        return prisma.payment
-          .aggregate({
-            where: {
-              shopId,
-              status: { in: ["PAID", "REFUNDED"] },
-              amount: { gte: 0 },
-              paidAt: { gte: s, lte: e },
-            },
-            _sum: { amount: true, refundedAmount: true },
+    canSeeRevenue
+      ? Promise.all(
+          Array.from({ length: 6 }, (_, i) => {
+            const d = subMonths(today, 5 - i)
+            return sumNetRevenue(shopId, startOfMonth(d), endOfMonth(d)).then((r) => ({
+              month: `${d.getMonth() + 1}月`,
+              revenue: r.net,
+            }))
           })
-          .then((r) => ({
-            month: `${d.getMonth() + 1}月`,
-            // Net of refunds (M1)
-            revenue: round2((r._sum.amount ?? 0) - (r._sum.refundedAmount ?? 0)),
-          }))
-      })
-    ),
+        )
+      : null,
 
     // 各狀態預約數
     prisma.appointment.groupBy({
@@ -104,7 +88,7 @@ export async function GET() {
   return NextResponse.json({
     todayAppointments,
     stayingPets,
-    monthRevenue: round2((monthRevenue._sum.amount ?? 0) - (monthRevenue._sum.refundedAmount ?? 0)),
+    monthRevenue: monthRevenue?.net ?? null,
     totalCustomers,
     monthlyRevenue,
     appointmentsByStatus,

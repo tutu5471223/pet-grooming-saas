@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { enforceRateLimit, clientIp } from "@/lib/rate-limit"
 import { readJson, z, shortText, longText } from "@/lib/validation"
 import { checkCustomerLimit } from "@/lib/subscription-guard"
+import { round2, sumMoney } from "@/lib/money"
 
 // L8: collapse duplicate submissions from the same phone+shop within this window.
 const DEDUP_WINDOW_MS = 2 * 60_000
@@ -19,8 +20,9 @@ const bookingSchema = z.object({
   preferredTime2: shortText.optional(),
   preferredTime3: shortText.optional(),
   notes: longText.optional(),
+  // 只採用服務 id；name/price 一律由伺服器查價（R6-H5），客戶端送的 price 忽略。
   services: z
-    .array(z.object({ price: z.number().finite().optional() }).passthrough())
+    .array(z.object({ id: z.string().trim().max(100).optional() }).passthrough())
     .max(MAX_SERVICES)
     .optional(),
 })
@@ -124,10 +126,32 @@ export async function POST(
       return NextResponse.json({ error: "日期或時間格式錯誤" }, { status: 400 })
     }
 
+    // R6-H5: 預估金額以前直接加總「客戶端送來的 price」（還允許負數），而預約
+    // 「標記完成」會拿 estimatedCost 建應收 —— 等於公開表單可以自訂應收金額。
+    // 改為依服務 id 從 Service 表查價，再套用該寵物的專屬價（同 pet-pricing）。
+    const serviceIds = [
+      ...new Set((services ?? []).map((s) => s.id).filter((v): v is string => !!v)),
+    ]
+    const [dbServices, petPrices] = serviceIds.length
+      ? await Promise.all([
+          prisma.service.findMany({
+            where: { id: { in: serviceIds }, shopId, isActive: true },
+            select: { id: true, name: true, price: true },
+          }),
+          prisma.petServicePrice.findMany({
+            where: { petId: pet.id, shopId, serviceId: { in: serviceIds } },
+            select: { serviceId: true, price: true },
+          }),
+        ])
+      : [[], []]
+    const petPriceById = new Map(petPrices.map((p) => [p.serviceId, p.price]))
+    const pricedServices = dbServices.map((s) => ({
+      id: s.id,
+      name: s.name,
+      price: round2(petPriceById.get(s.id) ?? s.price),
+    }))
     const estimatedCost =
-      Array.isArray(services) && services.length > 0
-        ? services.reduce((sum: number, s: { price?: number }) => sum + (Number.isFinite(s.price) ? (s.price as number) : 0), 0)
-        : null
+      pricedServices.length > 0 ? sumMoney(pricedServices.map((s) => s.price)) : null
 
     const noteParts: string[] = []
     const timeParts: string[] = []
@@ -144,7 +168,7 @@ export async function POST(
         type: "GROOMING",
         scheduledAt,
         status: "PENDING",
-        services: Array.isArray(services) && services.length > 0 ? JSON.stringify(services) : null,
+        services: pricedServices.length > 0 ? JSON.stringify(pricedServices) : null,
         estimatedCost,
         notes: noteParts.length > 0 ? noteParts.join("。") : null,
         source: "LINE",

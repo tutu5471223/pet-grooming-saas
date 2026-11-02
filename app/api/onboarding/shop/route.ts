@@ -29,6 +29,9 @@ export async function PATCH(req: NextRequest) {
         businessHoursStart: body.businessHoursStart ?? undefined,
         businessHoursEnd: body.businessHoursEnd ?? undefined,
       },
+      // R6-H8: 只回傳本頁會用到的欄位；整筆 shop 會帶出 LINE 密鑰與權杖，
+      // 而這支 API 任何店員都能呼叫。
+      select: { id: true, name: true, logoUrl: true, businessHoursStart: true, businessHoursEnd: true },
     })
     return NextResponse.json(shop)
   } catch (error) {

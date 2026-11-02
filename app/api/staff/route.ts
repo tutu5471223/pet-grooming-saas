@@ -58,7 +58,9 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "請求內容不是合法的 JSON" }, { status: 400 })
   }
-  console.log("[staff.create] 收到資料：", JSON.stringify(raw))
+  // R6-H7: 絕不能把密碼寫進 log（以前整包 JSON.stringify(raw) 會印出明文密碼）。
+  const { password: _pw, ...loggable } = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>
+  console.log("[staff.create] 收到資料：", JSON.stringify({ ...loggable, password: _pw ? "***" : undefined }))
 
   const parsedResult = staffCreateSchema.safeParse(raw)
   if (!parsedResult.success) {

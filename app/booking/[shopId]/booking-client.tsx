@@ -173,7 +173,8 @@ export function BookingClient({ shop, services, shopId }: BookingClientProps) {
           preferredTime2: form.preferredTime2 || undefined,
           preferredTime3: form.preferredTime3 || undefined,
           notes: form.notes,
-          services: effectiveServices.map((s) => ({ name: s.name, price: s.effectivePrice })),
+          // 價格由伺服器依服務 id 重新查價，這裡的 price 只供顯示參考。
+          services: effectiveServices.map((s) => ({ id: s.id, name: s.name, price: s.effectivePrice })),
         }),
       })
       if (!res.ok) {

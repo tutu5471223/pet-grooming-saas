@@ -27,6 +27,8 @@ export async function GET(req: NextRequest) {
       where: {
         shopId,
         status: { in: ["PAID", "REFUNDED"] },
+        // 包月扣次不是收入（整包已在購買時認列），見 lib/revenue。
+        billingType: { not: "MONTHLY_PLAN" },
         paidAt: { gte: start, lte: end },
       },
       include: {

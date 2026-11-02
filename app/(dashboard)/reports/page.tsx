@@ -29,6 +29,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { formatCurrency } from "@/lib/utils"
+import { sumNetRevenue, revenueWhere } from "@/lib/revenue"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ClickableDailyRevenueChart } from "@/components/dashboard/clickable-daily-revenue-chart"
@@ -78,32 +79,31 @@ async function getOverviewData(shopId: string, monthDate: Date) {
     topServices,
     dailyRevenue,
   ] = await Promise.all([
-    prisma.payment.aggregate({
-      where: { shopId, status: "PAID", paidAt: { gte: monthStart, lte: monthEnd } },
-      _sum: { amount: true },
-      _count: true,
-    }),
-    prisma.payment.aggregate({
-      where: { shopId, status: "PAID", paidAt: { gte: monthStart, lte: monthEnd }, boardingRecordId: { not: null } },
-      _sum: { amount: true },
-      _count: true,
-    }),
+    // R6-H1: 統一走 lib/revenue 的淨額口徑。舊寫法只加總 status=PAID，全額退款
+    // 的原單（已翻成 REFUNDED）被排除、負數沖銷列卻被算進來 → 退款被扣兩次。
+    sumNetRevenue(shopId, monthStart, monthEnd),
+    sumNetRevenue(shopId, monthStart, monthEnd, { boardingRecordId: { not: null } }),
     Promise.all(
       Array.from({ length: 6 }, (_, i) => {
         const d = subMonths(monthDate, 5 - i)
-        const s = startOfMonth(d)
-        const e = endOfMonth(d)
-        return prisma.payment
-          .aggregate({ where: { shopId, status: "PAID", paidAt: { gte: s, lte: e } }, _sum: { amount: true } })
-          .then((r) => ({ month: format(d, "M月"), monthKey: format(d, "yyyy-MM"), revenue: r._sum.amount ?? 0 }))
+        return sumNetRevenue(shopId, startOfMonth(d), endOfMonth(d))
+          .then((r) => ({ month: format(d, "M月"), monthKey: format(d, "yyyy-MM"), revenue: r.net }))
       })
     ),
-    prisma.payment.groupBy({
-      by: ["paymentMethod"],
-      where: { shopId, status: "PAID", paidAt: { gte: monthStart, lte: monthEnd } },
-      _sum: { amount: true },
-      _count: true,
-    }),
+    prisma.payment
+      .groupBy({
+        by: ["paymentMethod"],
+        where: revenueWhere(shopId, monthStart, monthEnd),
+        _sum: { amount: true, refundedAmount: true },
+        _count: true,
+      })
+      .then((groups) =>
+        groups.map((g) => ({
+          paymentMethod: g.paymentMethod,
+          _count: g._count,
+          _sum: { amount: Math.round(((g._sum.amount ?? 0) - (g._sum.refundedAmount ?? 0)) * 100) / 100 },
+        }))
+      ),
     prisma.groomingRecord.findMany({
       where: { shopId, date: { gte: monthStart, lte: monthEnd } },
       select: { services: true, totalCost: true },
@@ -111,12 +111,8 @@ async function getOverviewData(shopId: string, monthDate: Date) {
     Promise.all(
       eachDayOfInterval({ start: monthStart, end: effectiveEnd }).map((d) => {
         const isToday = format(d, "yyyy-MM-dd") === format(now, "yyyy-MM-dd")
-        return prisma.payment
-          .aggregate({
-            where: { shopId, status: "PAID", paidAt: { gte: startOfDay(d), lte: isToday ? now : endOfDay(d) } },
-            _sum: { amount: true },
-          })
-          .then((r) => ({ day: format(d, "d"), revenue: r._sum.amount ?? 0 }))
+        return sumNetRevenue(shopId, startOfDay(d), isToday ? now : endOfDay(d))
+          .then((r) => ({ day: format(d, "d"), revenue: r.net }))
       })
     ),
   ])
@@ -132,8 +128,8 @@ async function getOverviewData(shopId: string, monthDate: Date) {
     } catch {}
   }
 
-  const boardingRevenue = boardingRevenueStat._sum.amount ?? 0
-  const boardingCount = boardingRevenueStat._count
+  const boardingRevenue = boardingRevenueStat.net
+  const boardingCount = boardingRevenueStat.count
   const serviceStatsRaw = Array.from(serviceMap.entries())
     .map(([name, s]) => ({ name, ...s }))
     .sort((a, b) => b.revenue - a.revenue)
@@ -198,11 +194,11 @@ async function getOverviewData(shopId: string, monthDate: Date) {
   ])
 
   const monthExpense = monthExpenseAgg._sum.amount ?? 0
-  const monthRevenueTotal = monthRevenue._sum.amount ?? 0
+  const monthRevenueTotal = monthRevenue.net
 
   return {
     monthRevenue: monthRevenueTotal,
-    monthCount: monthRevenue._count,
+    monthCount: monthRevenue.count,
     boardingRevenue,
     boardingCount,
     monthlyRevenue,
@@ -223,12 +219,8 @@ async function getOverviewData(shopId: string, monthDate: Date) {
 async function getIncomeData(shopId: string, fromDate: Date, toDate: Date) {
   const [payments, sales] = await Promise.all([
     prisma.payment.findMany({
-      where: {
-        shopId,
-        status: { in: ["PAID", "REFUNDED"] },
-        paidAt: { gte: fromDate, lte: toDate },
-        amount: { gte: 0 }, // exclude negative reversal rows created by the refund flow
-      },
+      // 含排除負數沖銷列與包月扣次（見 lib/revenue）
+      where: revenueWhere(shopId, fromDate, toDate),
       include: {
         groomingRecord: {
           select: {

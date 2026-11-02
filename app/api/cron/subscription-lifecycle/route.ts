@@ -96,17 +96,26 @@ export async function GET(req: NextRequest) {
 
     // ── 有效（永久或未到期）：若店家先前被停權/標記，恢復之（backstop）──
     if (stillValid) {
+      // R6-H6: 只自動恢復「因訂閱到期而被本 cron 停權」的店家 —— 這類停權一定會
+      // 寫 suspendedAt。超管手動停權（違規等）不寫 suspendedAt（見
+      // superadmin/shops/[id] suspend），否則所有店家都是永久訂閱，超管停權
+      // 隔天就會被這裡自動解除。
+      const suspendedBySubscription = shop.status === "SUSPENDED" && shop.suspendedAt !== null
       const needsReactivate =
-        shop.status === "SUSPENDED" || shop.suspendedAt || shop.dataPurgeMarkedAt || sub.graceReminderSentAt
+        suspendedBySubscription ||
+        (shop.status !== "SUSPENDED" && (shop.suspendedAt || shop.dataPurgeMarkedAt)) ||
+        sub.graceReminderSentAt
       if (needsReactivate) {
-        await prisma.shop.update({
-          where: { id: shop.id },
-          data: {
-            ...(shop.status === "SUSPENDED" ? { status: "ACTIVE" } : {}),
-            suspendedAt: null,
-            dataPurgeMarkedAt: null,
-          },
-        })
+        if (shop.status !== "SUSPENDED" || suspendedBySubscription) {
+          await prisma.shop.update({
+            where: { id: shop.id },
+            data: {
+              ...(suspendedBySubscription ? { status: "ACTIVE" } : {}),
+              suspendedAt: null,
+              dataPurgeMarkedAt: null,
+            },
+          })
+        }
         await prisma.subscription.update({
           where: { id: sub.id },
           data: { graceReminderSentAt: null },

@@ -230,8 +230,9 @@ export async function POST(
         })
       }
 
-      // Award points (1 per $100)
-      const pointsEarned = Math.floor(finalAmount / 100)
+      // Award points (1 per $100)。包月扣次沒有實際收款（整包購買時已發過點數），
+      // 不再發點，否則同一筆預付款會被發兩次點數（R6-H2）。
+      const pointsEarned = billingType === "MONTHLY_PLAN" ? 0 : Math.floor(finalAmount / 100)
       if (pointsEarned > 0) {
         await tx.customer.update({
           where: { id: customerId },

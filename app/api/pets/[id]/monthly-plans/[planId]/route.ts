@@ -1,7 +1,7 @@
 // SECURITY: shopId forced from session
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireAuth } from "@/lib/auth-guard"
+import { requireAuth, requireRole } from "@/lib/auth-guard"
 import { readJson, z, shortText } from "@/lib/validation"
 import { parseMoney } from "@/lib/money"
 
@@ -110,7 +110,9 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; planId: string }> }
 ) {
-  const guard = await requireAuth()
+  // R6-H3: 刪除包月是財務操作（客人的預付次數會消失），限 OWNER —— 與
+  // 修改金額/次數（FIN-10）一致。
+  const guard = await requireRole(["OWNER"])
   if (!guard.ok) return guard.response
   const shopId = guard.ctx.shopId
   const { id: petId, planId } = await params
@@ -120,6 +122,18 @@ export async function DELETE(
       where: { id: planId, petId, shopId },
     })
     if (!plan) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    // 已收款或已扣過次的方案不可刪：刪掉會讓 Payment.monthlyPlanId 被 SET NULL，
+    // 收款紀錄與方案的關聯斷掉，客人剩餘的預付次數也跟著消失。
+    const paidCount = await prisma.payment.count({
+      where: { monthlyPlanId: planId, shopId, status: { in: ["PAID", "REFUNDED"] } },
+    })
+    if (paidCount > 0 || plan.usedSessions > 0) {
+      return NextResponse.json(
+        { error: "此方案已有收款或已使用次數，無法刪除；如需退費請使用退款功能" },
+        { status: 409 }
+      )
+    }
 
     await prisma.$transaction(async (tx) => {
       // Void PENDING payments linked to this plan before deleting so they

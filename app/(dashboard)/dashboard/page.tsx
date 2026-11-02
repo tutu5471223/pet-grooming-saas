@@ -20,8 +20,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { RevenueChart } from "@/components/dashboard/revenue-chart"
+import { sumNetRevenue } from "@/lib/revenue"
+import { hasPermission, parsePermissions } from "@/lib/permissions"
 
-async function getDashboardData(shopId: string) {
+async function getDashboardData(shopId: string, canSeeRevenue: boolean) {
   const today = new Date()
   const todayStart = startOfDay(today)
   const todayEnd = endOfDay(today)
@@ -40,28 +42,21 @@ async function getDashboardData(shopId: string) {
         include: { pet: { include: { customer: true } }, room: true },
         orderBy: { checkIn: "asc" },
       }),
-      prisma.payment.aggregate({
-        where: { shopId, status: "PAID", paidAt: { gte: monthStart, lte: monthEnd } },
-        _sum: { amount: true },
-      }),
+      // 營收只給 OWNER / 有 reports 權限者看（與 /reports、/api/reports 一致）。
+      canSeeRevenue ? sumNetRevenue(shopId, monthStart, monthEnd) : null,
       prisma.customer.count({ where: { shopId } }),
-      Promise.all(
-        Array.from({ length: 6 }, (_, i) => {
-          const d = subMonths(today, 5 - i)
-          const s = startOfMonth(d)
-          const e = endOfMonth(d)
-          return prisma.payment
-            .aggregate({
-              where: { shopId, status: "PAID", paidAt: { gte: s, lte: e } },
-              _sum: { amount: true },
+      canSeeRevenue
+        ? Promise.all(
+            Array.from({ length: 6 }, (_, i) => {
+              const d = subMonths(today, 5 - i)
+              return sumNetRevenue(shopId, startOfMonth(d), endOfMonth(d)).then((r) => ({
+                month: format(d, "M月"),
+                yearMonth: format(d, "yyyy-MM"),
+                revenue: r.net,
+              }))
             })
-            .then((r) => ({
-              month: format(d, "M月"),
-              yearMonth: format(d, "yyyy-MM"),
-              revenue: r._sum.amount ?? 0,
-            }))
-        })
-      ),
+          )
+        : [],
       prisma.sale.aggregate({
         where: { shopId, createdAt: { gte: todayStart, lte: todayEnd } },
         _sum: { total: true },
@@ -76,7 +71,7 @@ async function getDashboardData(shopId: string) {
   return {
     todayAppointments,
     stayingPets,
-    monthRevenue: monthRevenue._sum.amount ?? 0,
+    monthRevenue: monthRevenue?.net ?? 0,
     totalCustomers,
     monthlyRevenue,
     todaySalesTotal: todaySales._sum.total ?? 0,
@@ -87,10 +82,15 @@ async function getDashboardData(shopId: string) {
 export default async function DashboardPage() {
   const session = await auth()
   const shopId = session!.user.shopId
-  const data = await getDashboardData(shopId)
+  const canSeeRevenue = hasPermission(
+    session!.user.role,
+    parsePermissions(session!.user.permissions),
+    "reports"
+  )
+  const data = await getDashboardData(shopId, canSeeRevenue)
   const today = new Date()
 
-  const stats = [
+  const allStats = [
     {
       title: "今日預約",
       value: data.todayAppointments.length,
@@ -136,6 +136,7 @@ export default async function DashboardPage() {
       bg: "bg-orange-50",
     },
   ]
+  const stats = canSeeRevenue ? allStats : allStats.filter((s) => s.title !== "本月收入")
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -202,17 +203,19 @@ export default async function DashboardPage() {
       {/* Main content */}
       <div className="grid gap-4 sm:gap-6 lg:grid-cols-5">
         {/* Revenue chart */}
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle className="text-base">近6個月收入</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <RevenueChart data={data.monthlyRevenue} />
-          </CardContent>
-        </Card>
+        {canSeeRevenue && (
+          <Card className="lg:col-span-3">
+            <CardHeader>
+              <CardTitle className="text-base">近6個月收入</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RevenueChart data={data.monthlyRevenue} />
+            </CardContent>
+          </Card>
+        )}
 
         {/* Staying pets */}
-        <Card className="lg:col-span-2">
+        <Card className={canSeeRevenue ? "lg:col-span-2" : "lg:col-span-5"}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-base">住宿中寵物</CardTitle>
             <Link
